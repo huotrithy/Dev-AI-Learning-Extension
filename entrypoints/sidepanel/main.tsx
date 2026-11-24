@@ -70,7 +70,7 @@ function App() {
 
   return <div className="app-shell">
     <header className="top-bar">
-      <span className="brand"><span aria-hidden="true" className="brand-mark">↗</span> Learning Sidebar</span>
+      <span className="brand"><span aria-hidden="true" className="brand-mark">↗</span> Dev AI Learning</span>
       <nav aria-label="Sidebar views">
         {([['read', 'Read'], ['memory', 'Memory'], ['models', 'Models']] as const).map(([id, label]) =>
           <button key={id} className={view === id ? 'nav-active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}>{label}</button>,

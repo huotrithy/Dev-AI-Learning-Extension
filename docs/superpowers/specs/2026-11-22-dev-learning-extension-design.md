@@ -1,8 +1,8 @@
-# Developer Learning Sidebar — Design
+# Dev AI Learning Extension — Design
 
 Date: 2026-11-22
 Status: Draft for approval
-Working name: "the extension" (product name TBD)
+Project name: Dev AI Learning Extension
 
 ## 1. Intent
 

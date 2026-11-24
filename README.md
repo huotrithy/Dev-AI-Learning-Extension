@@ -1,4 +1,4 @@
-# Developer Learning Sidebar
+# Dev AI Learning Extension
 
 A Chrome side panel for learning technical pages with your own model. It streams an explanation, example, use cases, and a walkthrough. Read further by asking questions about the page or choosing a suggested follow-up.
 
