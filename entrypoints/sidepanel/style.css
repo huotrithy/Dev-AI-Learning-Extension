@@ -107,6 +107,7 @@ main {
 .source-meta { justify-content: space-between; font-size: .86rem; }
 .source-meta a { overflow-wrap: anywhere; }
 .read-actions { align-items: end; justify-content: space-between; }
+.related-docs-option { display: flex; align-items: center; gap: 8px; min-height: 36px; }
 .destination { color: var(--muted-foreground); font-size: .85rem; overflow-wrap: anywhere; }
 .setup, .learning-section, .chat-turn, .control-panel { display: grid; gap: 10px; padding: var(--panel-gutter); }
 .control-panel { font-size: inherit; line-height: inherit; }

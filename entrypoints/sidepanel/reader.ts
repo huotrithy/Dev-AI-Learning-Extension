@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { liveQuery } from 'dexie';
-import { LatestRequest, streamAnswer, streamLearning, type ChatTurn, type Section } from '../../src/learning/session.ts';
+import { LatestRequest, streamAnswer, streamLearning, type ChatTurn } from '../../src/learning/session.ts';
 import { createActivity, trackModelActivity, type ActivityStep } from '../../src/learning/activity.ts';
 import { chatHistory } from '../../src/learning/history.ts';
-import type { Depth } from '../../src/learning/prompts.ts';
+import { defaultDepth, learningLimits, type Depth, type Section } from '../../src/learning/config.ts';
 import type { RepositoryArchitecture } from '../../src/learning/architecture.ts';
 import { extractObservations, prepareSuggestions, type UserTurn } from '../../src/memory/observation.ts';
 import { pageScope } from '../../src/memory/policy.ts';
@@ -25,6 +25,7 @@ interface ReaderState {
   loading: boolean;
   working: 'learn' | 'chat' | null;
   depth: Depth;
+  includeRelatedDocs: boolean;
   sections: Partial<Record<Section, string>>;
   architecture?: RepositoryArchitecture | null;
   activity: ActivityStep[];
@@ -37,21 +38,25 @@ interface ReaderState {
 }
 
 const initialReader: ReaderState = {
-  session: '', loading: true, working: null, depth: 'new', sections: {}, architecture: undefined, activity: [], chat: [],
+  session: '', loading: true, working: null, depth: defaultDepth, includeRelatedDocs: false, sections: {}, architecture: undefined, activity: [], chat: [],
   suggestions: [], error: '', notice: '', question: '', historyError: undefined,
 };
 
-export type ReaderSnapshot = Pick<ReaderState, 'tabId' | 'session' | 'depth' | 'sections' | 'architecture' | 'chat' | 'suggestions' | 'question' | 'notice'> & { url?: string; loadedSource?: PageSource; activity?: ActivityStep[] };
+export type ReaderSnapshot = Pick<ReaderState, 'tabId' | 'session' | 'depth' | 'includeRelatedDocs' | 'sections' | 'architecture' | 'chat' | 'suggestions' | 'question' | 'notice'> & { url?: string; loadedSource?: PageSource; activity?: ActivityStep[] };
 
 export function hasActiveChat({ chat, question }: Pick<ReaderState, 'chat' | 'question'>): boolean {
   return chat.length > 0 || Boolean(question.trim());
 }
 
+export function hasPendingDocsScope({ page, includeRelatedDocs }: Pick<ReaderState, 'page' | 'includeRelatedDocs'>): boolean {
+  return Boolean(page?.docs) !== includeRelatedDocs;
+}
+
 export function snapshotReader(): ReaderSnapshot {
   const state = useReader.getState();
-  const { tabId, page, session, depth, sections, architecture, activity, chat, suggestions, question, notice } = state;
+  const { tabId, page, session, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, notice } = state;
   const loadedSource = hasActiveChat(state) || page?.repository || page?.docs || page?.video ? page : undefined;
-  return { tabId, url: page?.url, session, depth, sections, architecture, activity, chat, suggestions, question, notice, loadedSource };
+  return { tabId, url: page?.url, session, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, notice, loadedSource };
 }
 
 export const memory = new DexieMemoryRepository();
@@ -123,8 +128,8 @@ export function invalidateTab(tabId: number): void {
 }
 
 function restoreReader(tabId: number | undefined, page: PageSource, snapshot: ReaderSnapshot): void {
-  const { depth, sections, architecture, activity = [], chat, suggestions, question, session, notice } = snapshot;
-  useReader.setState({ tabId, page, depth, sections, architecture, activity, chat, suggestions, question, session, notice, loading: false });
+  const { depth, includeRelatedDocs = Boolean(page.docs), sections, architecture, activity = [], chat, suggestions, question, session, notice } = snapshot;
+  useReader.setState({ tabId, page, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, session, notice, loading: false });
 }
 
 export async function loadPage(
@@ -158,7 +163,12 @@ export async function loadPage(
     if (restore?.tabId === tab.id && restore.url === page.url) {
       restoreReader(tab.id, restore.loadedSource?.url === page.url ? restore.loadedSource : page, restore);
     } else {
-      useReader.setState({ page, session: samePage ? previous.session : crypto.randomUUID(), loading: false });
+      useReader.setState({
+        page,
+        session: samePage ? previous.session : crypto.randomUUID(),
+        includeRelatedDocs: samePage && previous.tabId === tab.id && previous.includeRelatedDocs,
+        loading: false,
+      });
     }
   } catch (error) {
     if (navigation.isCurrent(controller)) useReader.setState({ loading: false, error: error instanceof Error ? error.message : 'Unable to read the page.' });
@@ -177,11 +187,9 @@ export function closeReader(): void {
   for (const controller of observations) controller.abort();
 }
 
-export async function learn(
-  settings: ModelSettings, depth = useReader.getState().depth,
-  mode: 'page' | 'docs' = useReader.getState().page?.docs ? 'docs' : 'page',
-): Promise<void> {
-  let { page, tabId } = useReader.getState();
+export async function learn(settings: ModelSettings): Promise<void> {
+  const { depth, includeRelatedDocs, tabId, page: loadedPage } = useReader.getState();
+  let page = loadedPage;
   if (!page) return;
   const controller = request.start();
   clearSuggestions();
@@ -192,7 +200,7 @@ export async function learn(
   const activity = createActivity(controller.signal, (steps) => {
     if (request.isCurrent(controller)) set({ activity: steps });
   });
-  const fetchDocs = !repo && mode === 'docs' && !page.docs;
+  const fetchDocs = includeRelatedDocs && !repo && !youtube && Boolean(page.relatedLinks?.length) && !page.docs;
   const finishSource = activity.start(repo && !page.repository ? 'Read files from GitHub'
     : fetchDocs ? 'Read linked documentation' : youtube && !page.video ? 'Read YouTube transcript' : 'Use the loaded source');
 
@@ -226,9 +234,9 @@ export async function learn(
         page = { ...page, docs };
         set({ page, chat: [] });
       } else {
-        set({ notice: 'Site access was declined. The explanation uses the current page.' });
+        set({ includeRelatedDocs: false, notice: 'Site access was declined. The explanation uses the current page.' });
       }
-    } else if (mode === 'page' && page.docs) {
+    } else if (!includeRelatedDocs && page.docs) {
       page = { ...page, docs: undefined };
       set({ page, chat: [] });
     }
@@ -259,7 +267,7 @@ export async function learn(
     if (status?.enabled && context.intents.length) {
       const source = page;
       const suggestion = suggestionRequest.start();
-      const signal = AbortSignal.any([suggestion.signal, AbortSignal.timeout(45_000)]);
+      const signal = AbortSignal.any([suggestion.signal, AbortSignal.timeout(learningLimits.personalizationTimeoutMs)]);
       void runWithCurrentMemory(memory, status.revision, async () => {
         signal.throwIfAborted();
         return prepareSuggestions(source, context, gateway, signal);
@@ -283,9 +291,10 @@ export async function learn(
 }
 
 export async function ask(text: string, origin: UserTurn['origin'], settings: ModelSettings): Promise<void> {
-  const { page, session, chat, depth, working, sections } = useReader.getState();
-  const question = text.trim().slice(0, 2_000);
-  if (!page || !question || working || (githubRepository(page.url) && !page.repository) || (youtubeVideo(page.url) && !page.video)) return;
+  const reader = useReader.getState();
+  const { page, session, chat, depth, working, sections } = reader;
+  const question = text.trim().slice(0, learningLimits.chat.questionCharacters);
+  if (!page || !question || working || hasPendingDocsScope(reader) || (githubRepository(page.url) && !page.repository) || (youtubeVideo(page.url) && !page.video)) return;
   const controller = request.start();
   const historyRevision = chatHistory.revision().catch(() => undefined);
   const turnId = crypto.randomUUID();
@@ -331,7 +340,7 @@ export async function ask(text: string, origin: UserTurn['origin'], settings: Mo
     if (status?.enabled && origin === 'user') {
       const observation = new AbortController();
       observations.add(observation);
-      const signal = AbortSignal.any([observation.signal, AbortSignal.timeout(45_000)]);
+      const signal = AbortSignal.any([observation.signal, AbortSignal.timeout(learningLimits.personalizationTimeoutMs)]);
       void runWithCurrentMemory(memory, status.revision, async () => {
         signal.throwIfAborted();
         const observations = await extractObservations({ text: question, origin, scope }, gateway, signal);

@@ -4,15 +4,16 @@ import { ArrowUp } from "lucide-react";
 import Markdown from "react-markdown";
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
+import { Checkbox } from "@/src/components/ui/checkbox";
 import { Label } from "@/src/components/ui/label";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/src/components/ui/native-select";
 import { Textarea } from "@/src/components/ui/textarea";
-import { sections, type Section } from "../../src/learning/session.ts";
+import { depthLabels, learningLimits, sections, type Depth, type Section } from "../../src/learning/config.ts";
 import { chatHistory } from "../../src/learning/history.ts";
-import type { Depth } from "../../src/learning/prompts.ts";
+import { pageAccessGranted } from "../../src/learning/reader-window.ts";
 import { githubRepository } from "../../src/page/github.ts";
 import { docsReferences } from "../../src/page/docs.ts";
 import { seekYouTube } from "../../src/page/active-tab.ts";
@@ -42,6 +43,7 @@ import {
   ask,
   closeReader,
   hasActiveChat,
+  hasPendingDocsScope,
   invalidateTab,
   learn,
   loadPage,
@@ -51,6 +53,10 @@ import {
   type ReaderSnapshot,
 } from "./reader.ts";
 import "./style.css";
+
+const depthId = "depth";
+const relatedDocsId = "include-related-docs";
+const fencedLanguagePrefix = "language-";
 
 function Prose({ text, sources, onSourceClick }: {
   text: string;
@@ -77,9 +83,9 @@ function Prose({ text, sources, onSourceClick }: {
             const value = code.children.map((child) => child.type === "text" ? child.value : "").join("");
             const classes = code.properties.className;
             const language = Array.isArray(classes)
-              ? classes.find((value) => typeof value === "string" && value.startsWith("language-"))
+              ? classes.find((value) => typeof value === "string" && value.startsWith(fencedLanguagePrefix))
               : undefined;
-            return <CodeSnippet code={value} language={typeof language === "string" ? language.slice(9) : ""} />;
+            return <CodeSnippet code={value} language={typeof language === "string" ? language.slice(fencedLanguagePrefix.length) : ""} />;
           },
         }}
       >
@@ -107,6 +113,9 @@ function App() {
   const video = reader.page?.video;
   const profile = settings?.profiles.find(({ id }) => id === settings.main);
   const system = settings?.profiles.find(({ id }) => id === settings.system);
+  const pendingDocsScope = hasPendingDocsScope(reader);
+  const learnLabel = reader.sections.intro ? "Explain again"
+    : youtube ? "Learn this video" : repo ? "Learn this repo" : "Learn this page";
 
   const loadActivePage = useCallback((windowId: number, restore?: ReaderSnapshot) => {
     if (restore?.loadedSource && hasActiveChat(restore)) {
@@ -185,7 +194,7 @@ function App() {
     >[0] = (message) => {
       const { tabId, page } = useReader.getState();
       if (
-        message?.type === "page-access-granted" &&
+        message?.type === pageAccessGranted &&
         message.tabId === tabId &&
         !page
       )
@@ -374,47 +383,50 @@ function App() {
                 <h1 id="page-title">{reader.page.title}</h1>
                 <div className="read-actions">
                   <div className="field">
-                    <Label htmlFor="depth">Depth</Label>
+                    <Label htmlFor={depthId}>Depth</Label>
                     <NativeSelect
-                      id="depth"
+                      id={depthId}
                       value={reader.depth}
+                      disabled={reader.working === "learn"}
                       onChange={(event) => {
                         const depth = event.target.value as Depth;
                         useReader.setState({ depth });
-                        if (settings && reader.sections.intro)
-                          void learn(settings, depth);
+                        if (settings && reader.sections.intro && !pendingDocsScope)
+                          void learn(settings);
                       }}
                     >
-                      <NativeSelectOption value="new">
-                        New to this
-                      </NativeSelectOption>
-                      <NativeSelectOption value="technical">
-                        More technical
-                      </NativeSelectOption>
+                      {Object.entries(depthLabels).map(([value, label]) => (
+                        <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
+                      ))}
                     </NativeSelect>
                   </div>
+                  {!repo && !youtube && Boolean(reader.page.relatedLinks?.length) && (
+                    <div className="related-docs-option">
+                      <Checkbox
+                        id={relatedDocsId}
+                        checked={reader.includeRelatedDocs}
+                        disabled={Boolean(reader.working)}
+                        onCheckedChange={(includeRelatedDocs) => useReader.setState({ includeRelatedDocs })}
+                      />
+                      <Label htmlFor={relatedDocsId}>Include related docs</Label>
+                    </div>
+                  )}
                   {reader.working ? (
                     <Button variant="outline" onClick={stopReading}>
                       Stop
                     </Button>
                   ) : (
-                    <div className="button-row">
-                      <Button
-                        disabled={!profile}
-                        onClick={() => settings && void learn(settings)}
-                      >
-                        {reader.sections.intro ? "Explain again"
-                          : youtube ? "Learn this video" : repo ? "Learn this repo" : docs ? "Explain these docs" : "Learn this page"}
-                      </Button>
-                      {!repo && Boolean(reader.page.relatedLinks?.length) && (
-                        <Button variant="outline" disabled={!profile}
-                          onClick={() => settings && void learn(settings, reader.depth, docs ? "page" : "docs")}>
-                          {docs ? "Learn this page" : "Learn docs site"}
-                        </Button>
-                      )}
-                    </div>
+                    <Button
+                      disabled={!profile}
+                      onClick={() => settings && void learn(settings)}
+                    >
+                      {learnLabel}
+                    </Button>
                   )}
                 </div>
+                {pendingDocsScope && !reader.working && (
+                  <p className="destination" role="status">Select {learnLabel} to apply the new scope.</p>
+                )}
                 {profile && (
                   <p className="destination">
                     {youtube ? "Transcript excerpts go to" : repo ? "Repository excerpts go to" : docs ? "Documentation excerpts go to" : "Model requests go to"} {modelEndpoint(profile).host}
@@ -538,7 +550,7 @@ function App() {
                   <Button
                     variant="secondary"
                     className="h-auto w-full justify-start whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]"
-                    disabled={Boolean(reader.working)}
+                    disabled={Boolean(reader.working) || pendingDocsScope}
                     onClick={() =>
                       settings && void ask(suggestion, "suggestion", settings)
                     }
@@ -557,7 +569,7 @@ function App() {
               id="question"
               placeholder={youtube ? "Ask about this video…" : repo ? "Ask about this repo…" : docs ? "Ask about these docs…" : "Ask about this page…"}
               value={question}
-              maxLength={2_000}
+              maxLength={learningLimits.chat.questionCharacters}
               rows={2}
               onChange={(event) =>
                 useReader.setState({ question: event.target.value })
@@ -569,7 +581,7 @@ function App() {
               type="submit"
               aria-label="Send question"
               title="Send question"
-              disabled={Boolean(reader.working) || !question.trim()}
+              disabled={Boolean(reader.working) || pendingDocsScope || !question.trim()}
             >
               <ArrowUp aria-hidden="true" className="size-5" strokeWidth={2.5} />
             </Button>

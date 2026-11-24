@@ -20,7 +20,8 @@ const server = createServer(async (request, response) => {
   if (request.url !== '/v1/chat/completions') {
     const title = request.url === '/second' ? 'Queue acknowledgments' : 'Reliable work queues';
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(`<title>${title}</title><article><h1>${title}</h1><p>Jobs are acknowledged after processing. A broker can redeliver jobs a worker does not acknowledge.</p></article>`);
+    const related = request.url === '/first' ? '<a rel="next" href="/second">Read about acknowledgments</a>' : '';
+    response.end(`<title>${title}</title><article><h1>${title}</h1><p>Jobs are acknowledged after processing. A broker can redeliver jobs a worker does not acknowledge.</p>${related}</article>`);
     return;
   }
 
@@ -180,6 +181,65 @@ try {
   }
 
   await waitFor('Reliable work queues');
+  await waitFor('Include related docs');
+  assert.deepEqual(await evaluate(`(() => {
+    const controls = document.querySelector('.read-actions');
+    const toggle = controls.querySelector('[role="checkbox"]');
+    return {
+      buttons: [...controls.querySelectorAll('button')].map((button) => button.textContent.trim()),
+      checked: toggle?.getAttribute('aria-checked'),
+    };
+  })()`), { buttons: ['Learn this page'], checked: 'false' }, 'Docs scope is optional and shares the page action');
+  const docsCheckbox = 'document.querySelector(".read-actions [role=checkbox]")';
+  const pageOnlyStart = prompts.length;
+  await click('Learn this page');
+  await waitFor('Explain again');
+  assert.ok(prompts.length > pageOnlyStart);
+  assert.ok(prompts.slice(pageOnlyStart).every(({ system }) => !system.includes('The first page is where the reader started')));
+
+  // Simulate Chrome granting the site's optional permission. The fixture also allows CORS.
+  await evaluate(`(() => {
+    window.originalPermissionsRequest = chrome.permissions.request;
+    window.docsPermissionsRequested = [];
+    chrome.permissions.request = async ({ origins }) => {
+      window.docsPermissionsRequested.push(...origins);
+      return true;
+    };
+  })()`);
+  await evaluate(`${docsCheckbox}.click()`);
+  assert.equal(await evaluate(`${docsCheckbox}.getAttribute("aria-checked")`), 'true');
+  await waitFor('Select Explain again to apply the new scope.');
+  await click('Refresh page');
+  await waitFor('Select Learn this page to apply the new scope.');
+  assert.equal(await evaluate(`${docsCheckbox}.getAttribute("aria-checked")`), 'true', 'Refreshing the same page keeps the selected scope');
+  await click('Learn this page');
+  await waitFor('Documentation pages read (2)');
+  await waitFor('Suggested reading path');
+  await waitFor('Explain again');
+  assert.deepEqual(await evaluate('window.docsPermissionsRequested'), ['http://127.0.0.1/*']);
+  assert.ok(prompts.some(({ system, prompt }) => system.includes('The first page is where the reader started') && prompt.includes(`${origin}/second`)));
+  await evaluate('chrome.permissions.request = window.originalPermissionsRequest');
+  await evaluate(`${docsCheckbox}.click()`);
+  await waitFor('Select Explain again to apply the new scope.');
+  const pendingScopeStart = prompts.length;
+  await select('Depth', 'technical');
+  await waitFor('Select Explain again to apply the new scope.');
+  assert.equal(prompts.length, pendingScopeStart, 'Changing depth does not rerun the old scope');
+  await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    set.call(question, 'Could this still use related docs?');
+    question.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate('document.querySelector(".composer button[type=submit]").disabled'), true);
+  await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, '');
+    question.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await click('Explain again');
+  await waitFor('Explain again');
+  assert.equal(await evaluate('document.body.innerText.includes("Documentation pages read")'), false);
   const storageProtected = await worker.evaluate(async (url) => {
     const tab = (await chrome.tabs.query({})).find((item) => item.url === url);
     const [probe] = await chrome.scripting.executeScript({
@@ -236,7 +296,7 @@ try {
   assert.ok(readingLayout.lineWidth < readingLayout.cardWidth - 100, 'Prose keeps a readable line length on a wide sidebar');
   assert.ok(Math.abs(readingLayout.composerWidth - readingLayout.cardWidth) < 1, 'The composer aligns with the reading cards');
   await sendPanel('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
-  await waitFor('Learn this page');
+  await waitFor('Explain again');
   await setTimeout(400);
   await click('Memory');
   await waitFor('Why this was saved');
@@ -513,7 +573,7 @@ try {
   await waitForAnswer('Where is startReader called?', 'Fixture architecture uses');
   assert.ok(prompts.some(({ prompt }) => prompt.includes('Question: Where is startReader called?') && prompt.includes(repoFile)));
   await client.close();
-  console.log('Browser smoke passed: reader windows, appearance, settings, extraction, chat, memory, diagrams, and GitHub Repo Mode.');
+  console.log('Browser smoke passed: reader windows, appearance, settings, page and docs scopes, chat, memory, diagrams, and GitHub Repo Mode.');
 } finally {
   await context?.close();
   server.close();

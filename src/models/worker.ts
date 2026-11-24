@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { readerPath } from '../learning/reader-window.ts';
 import { decisionSchemas } from './decision-schemas.ts';
 import { createGateway } from './gateway.ts';
 import { hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from './profiles.ts';
@@ -7,7 +8,7 @@ import { handleModelSettings } from './settings-worker.ts';
 import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from './worker-protocol.ts';
 
 function isReaderUrl(url?: string): boolean {
-  return url?.split(/[?#]/, 1)[0] === chrome.runtime.getURL('sidepanel.html');
+  return url?.split(/[?#]/, 1)[0] === chrome.runtime.getURL(readerPath);
 }
 
 export function serveModelPort(port: chrome.runtime.Port): void {

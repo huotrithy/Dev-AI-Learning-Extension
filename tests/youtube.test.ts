@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { captureTranscript, youtubeVideo, videoSource } from '../src/page/youtube.ts';
-import { pageContext } from '../src/learning/prompts.ts';
+import { pageContext } from '../src/learning/context.ts';
 import { streamAnswer, streamLearning } from '../src/learning/session.ts';
 
 const url = 'https://www.youtube.com/watch?v=abcdefghijk';
