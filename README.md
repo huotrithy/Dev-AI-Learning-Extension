@@ -5,11 +5,11 @@ A Chrome side panel for learning technical pages with your own model. It streams
 ## Load the extension
 
 1. Open `chrome://extensions`, enable **Developer mode**, and select **Load unpacked**.
-2. Choose `.output/chrome-mv3` from this project. To rebuild that directory, use Node.js 22.15 or newer.
+2. Choose `.output/chrome-mv3` from this project. To rebuild that directory, use Node.js 22.15 or newer and pnpm 10.18.0.
 
    ```sh
-   npm ci
-   npm run build
+   pnpm install --frozen-lockfile
+   pnpm run build
    ```
 
 3. Open a technical article and click the extension’s toolbar icon. In **Models**, save a provider profile and allow access to its endpoint when Chrome prompts. For MLX, choose **OpenAI-compatible**, enter the server’s `/v1` base URL, and use the model ID from that server. For the project’s Qwen profile, use `mlx-community/Qwen3.5-4B-MLX-4bit` with **Disable thinking (MLX)** enabled.
@@ -24,11 +24,15 @@ Memory is stored in Chrome’s IndexedDB. Model requests can contain page excerp
 ## Verify locally
 
 ```sh
-npm test
-npm run typecheck
-npm run build
-npx playwright-core install chromium
-npm run test:browser
+pnpm test
+pnpm run typecheck
+pnpm run build
+pnpm exec playwright-core install chromium
+pnpm run test:browser
 ```
 
 The browser test opens the native side panel on a local fixture page and uses a deterministic model endpoint.
+
+## Sidebar components
+
+Reuse the shadcn/ui components in `src/components/ui`. The root `components.json` configures the Base UI Nova registry and the sidebar theme.

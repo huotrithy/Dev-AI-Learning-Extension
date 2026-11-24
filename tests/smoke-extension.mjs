@@ -90,7 +90,7 @@ try {
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: panelTarget.targetId, flatten: false });
   let commandId = 0;
 
-  async function evaluate(expression) {
+  async function sendPanel(method, params) {
     const id = ++commandId;
     const reply = Promise.withResolvers();
     const receive = ({ message, sessionId: source }) => {
@@ -100,26 +100,33 @@ try {
     };
     cdp.on('Target.receivedMessageFromTarget', receive);
     try {
-      await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method: 'Runtime.evaluate',
-        params: { expression, awaitPromise: true, returnByValue: true, userGesture: true },
-      }) });
+      await cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) });
       const { error, result } = await Promise.race([reply.promise, setTimeout(4_000, null, { ref: false }).then(() => { throw new Error('Side panel CDP timeout'); })]);
-      assert.ok(!error && !result.exceptionDetails, JSON.stringify(error ?? result.exceptionDetails));
-      return result.result.value;
+      assert.ok(!error && !result?.exceptionDetails, JSON.stringify(error ?? result?.exceptionDetails));
+      return result;
     } finally {
       cdp.off('Target.receivedMessageFromTarget', receive);
     }
   }
 
+  async function evaluate(expression) {
+    const { result } = await sendPanel('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true });
+    return result.value;
+  }
+
   async function waitFor(text) {
     let body;
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      body = await evaluate('document.body.innerText');
+      body = await evaluate('document.body?.innerText');
       if (body?.includes(text)) return;
-      if (await evaluate('Boolean(document.querySelector("[role=alert]"))')) break;
       await setTimeout(125);
     }
     assert.fail(`Could not find ${text} in native side panel:\n${body}`);
+  }
+
+  async function checkNarrowLayout(view) {
+    assert.equal(await evaluate(`window.innerWidth === 320 &&
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth`), true, `${view} fits a 320-pixel sidebar`);
   }
 
   async function click(text) {
@@ -132,9 +139,9 @@ try {
 
   async function select(label, value) {
     const changed = await evaluate(`(() => {
-      const label = [...document.querySelectorAll('label')].find((item) => item.firstChild.textContent.trim() === ${JSON.stringify(label)});
-      const field = label?.querySelector('select');
-      if (!field) return false;
+      const field = [...document.querySelectorAll('select')].find((item) =>
+        [...item.labels].some((associated) => associated.textContent.trim() === ${JSON.stringify(label)}));
+      if (!field || field.disabled) return false;
       field.value = ${JSON.stringify(value)};
       field.dispatchEvent(new Event('change', { bubbles: true })); return true;
     })()`);
@@ -142,6 +149,8 @@ try {
   }
 
   await waitFor('Reliable work queues');
+  await sendPanel('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
+  await checkNarrowLayout('Read');
   await evaluate(`(() => {
     const question = document.querySelector('#question');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(question, 'Always use TypeScript examples.');
@@ -153,6 +162,16 @@ try {
   await setTimeout(400);
   await click('Memory');
   await waitFor('Why this was saved');
+  await checkNarrowLayout('Memory');
+  assert.equal(await evaluate(`(() => {
+    const trigger = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === 'Why this was saved');
+    if (!trigger || trigger.getAttribute('aria-expanded') !== 'false') return false;
+    trigger.focus();
+    if (!trigger.matches(':focus-visible') || getComputedStyle(trigger).boxShadow === 'none') return false;
+    trigger.click();
+    return true;
+  })()`), true, 'The evidence control is keyboard focusable and starts collapsed');
+  await waitFor('Always use TypeScript examples.');
   await select('Preference type', 'intent');
   await click('Save preference');
   await waitFor('Preference saved.');
@@ -170,7 +189,13 @@ try {
   assert.equal(await evaluate('Boolean(document.querySelector(".diagram img")?.naturalWidth)'), true,
     `The model flowchart renders under MV3:\n${await evaluate('document.body.innerText')}`);
   await click('Memory');
-  await evaluate('document.querySelector("input[type=checkbox]").click()');
+  await waitFor('Why this was saved');
+  assert.equal(await evaluate(`(() => {
+    const label = [...document.querySelectorAll('label')].find((item) => item.textContent.trim() === 'Use learning memory');
+    if (!label?.control || label.control.disabled) return false;
+    label.click();
+    return true;
+  })()`), true, 'The memory control has an associated label');
   await waitFor('Memory is paused.');
   await click('Read');
   const count = prompts.length;
@@ -179,8 +204,40 @@ try {
   assert.ok(prompts.length > count);
   assert.ok(prompts.slice(count).every(({ system }) => !system.includes('TypeScript')));
   assert.equal(await evaluate('document.querySelectorAll(".suggestions button").length'), 0);
+  await click('Memory');
+  await click('Clear memory');
+  await waitFor('Clear all saved preferences, questions, and supporting evidence?');
+  await click('Cancel');
+  await waitFor('Why this was saved');
+  assert.equal(await evaluate(`(() => {
+    const record = [...document.querySelectorAll('.memory-records li')].find((item) => item.querySelector('strong')?.textContent.includes('TypeScript'));
+    const edit = [...record?.querySelectorAll('button') ?? []].find((button) => button.textContent.trim() === 'Edit');
+    if (!edit) return false;
+    edit.click();
+    return true;
+  })()`), true, 'The learned language preference can be edited');
+  await waitFor('Edit memory');
+  await select('Preference', 'python');
+  await click('Save preference');
+  await waitFor('Preference saved.');
+  assert.equal(await evaluate(`[...document.querySelectorAll('.memory-records strong')].some((item) => item.textContent.includes('Python'))`), true,
+    'The updated language is shown in the saved memory list');
+  await click('Clear memory');
+  await click('Clear all');
+  await waitFor('No saved preferences yet.');
+  await click('Models');
+  await waitFor('Model settings');
+  await checkNarrowLayout('Models');
+  await select('Edit profile', 'new');
+  await select('Provider', 'anthropic');
+  assert.equal(await evaluate('document.querySelector("#base-url") === null'), true, 'Hosted profiles hide the base URL field');
+  await click('Save profile');
+  await waitFor('Enter an API key for this provider.');
+  await select('Edit profile', 'fixture');
+  await waitFor('Base URL');
+  assert.equal(await evaluate('document.querySelector("#profile-name").value'), 'Fixture');
   await client.close();
-  console.log('Chromium smoke passed: toolbar, extraction, chat, memory, personalized prompts, suggestions, diagram, and pause.');
+  console.log('Chromium smoke passed: narrow sidebar, visible keyboard focus, model settings, extraction, chat, memory editing, personalization, diagram, pause, and clearing.');
 } finally {
   await context?.close();
   server.close();

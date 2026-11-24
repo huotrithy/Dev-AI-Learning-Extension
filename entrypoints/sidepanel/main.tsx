@@ -1,6 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
+import { Alert, AlertDescription } from '@/src/components/ui/alert';
+import { Button } from '@/src/components/ui/button';
+import { Input } from '@/src/components/ui/input';
+import { Label } from '@/src/components/ui/label';
+import { NativeSelect, NativeSelectOption } from '@/src/components/ui/native-select';
 import { sections, type Section } from '../../src/learning/session.ts';
 import type { Depth } from '../../src/learning/prompts.ts';
 import { defaultSettings, loadSettings, modelEndpoint, type ModelSettings as Settings } from '../../src/models/profiles.ts';
@@ -73,43 +78,47 @@ function App() {
       <span className="brand"><span aria-hidden="true" className="brand-mark">↗</span> Dev AI Learning</span>
       <nav aria-label="Sidebar views">
         {([['read', 'Read'], ['memory', 'Memory'], ['models', 'Models']] as const).map(([id, label]) =>
-          <button key={id} className={view === id ? 'nav-active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}>{label}</button>,
+          <Button key={id} size="sm" variant={view === id ? 'secondary' : 'ghost'} aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}>{label}</Button>,
         )}
       </nav>
     </header>
     <main>
-      {configurationError && <p role="alert" className="status error">{configurationError}</p>}
+      {configurationError && <Alert variant="destructive"><AlertDescription>{configurationError}</AlertDescription></Alert>}
       {view === 'models' && settings && <ModelSettings settings={settings} onSave={setSettings} />}
       {view === 'memory' && <MemorySettings />}
       {view === 'read' && <>
-        {reader.loading && <p className="status" role="status">Reading the active page…</p>}
-        {reader.error && <p className="status error" role="alert">{reader.error}</p>}
-        {!reader.loading && !reader.page && <button className="text-button" onClick={() => void loadPage()}>Refresh page</button>}
+        {reader.loading && <Alert role="status"><AlertDescription>Reading the active page…</AlertDescription></Alert>}
+        {reader.error && <Alert variant="destructive"><AlertDescription>{reader.error}</AlertDescription></Alert>}
+        {!reader.loading && !reader.page && <Button className="justify-self-start" variant="ghost" size="sm" onClick={() => void loadPage()}>Refresh page</Button>}
         {reader.page && <section className="source" aria-labelledby="page-title">
           <div className="source-meta">
             <a href={reader.page.url} target="_blank" rel="noreferrer" title="Open source in a new tab">{new URL(reader.page.url).hostname} ↗</a>
-            <button className="text-button" onClick={() => void loadPage()}>Refresh page</button>
+            <Button variant="ghost" size="sm" onClick={() => void loadPage()}>Refresh page</Button>
           </div>
           <h1 id="page-title">{reader.page.title}</h1>
           <div className="read-actions">
-            <label className="depth-label">Depth<select value={reader.depth} onChange={(event) => {
-              const depth = event.target.value as Depth;
-              useReader.setState({ depth });
-              if (settings && reader.sections.intro) void learn(settings, depth);
-            }}>
-              <option value="new">New to this</option><option value="technical">More technical</option>
-            </select></label>
-            {reader.working ? <button className="text-button" onClick={stopReading}>Stop</button>
-              : <button className="primary" disabled={!profile} onClick={() => settings && void learn(settings)}>{reader.sections.intro ? 'Explain again' : 'Learn this page'}</button>}
+            <div className="field">
+              <Label htmlFor="depth">Depth</Label>
+              <NativeSelect id="depth" value={reader.depth} onChange={(event) => {
+                const depth = event.target.value as Depth;
+                useReader.setState({ depth });
+                if (settings && reader.sections.intro) void learn(settings, depth);
+              }}>
+                <NativeSelectOption value="new">New to this</NativeSelectOption>
+                <NativeSelectOption value="technical">More technical</NativeSelectOption>
+              </NativeSelect>
+            </div>
+            {reader.working ? <Button variant="outline" onClick={stopReading}>Stop</Button>
+              : <Button disabled={!profile} onClick={() => settings && void learn(settings)}>{reader.sections.intro ? 'Explain again' : 'Learn this page'}</Button>}
           </div>
           {profile && <p className="destination">Model requests go to {modelEndpoint(profile).host}{system && modelEndpoint(system).host !== modelEndpoint(profile).host ? ` and ${modelEndpoint(system).host}` : ''}.</p>}
         </section>}
         {settings && !profile && <section className="setup">
           <h2>Connect a model</h2>
           <p className="muted">Use a local OpenAI-compatible endpoint, OpenAI, or Anthropic to learn from this page.</p>
-          <button className="primary" onClick={() => setView('models')}>Set up a model</button>
+          <Button className="justify-self-start" onClick={() => setView('models')}>Set up a model</Button>
         </section>}
-        {reader.working === 'learn' && !reader.sections.intro && <p role="status" className="status">Generating explanation…</p>}
+        {reader.working === 'learn' && !reader.sections.intro && <Alert role="status"><AlertDescription>Generating explanation…</AlertDescription></Alert>}
         {Object.entries(sections).map(([id, heading]) => {
           const text = reader.sections[id as Section];
           if (!text) return null;
@@ -127,13 +136,13 @@ function App() {
     {view === 'read' && reader.page && profile && <footer className="composer">
       {reader.suggestions.length > 0 && <ul className="suggestions" aria-label="Suggested questions">
         {reader.suggestions.map((suggestion) => <li key={suggestion}>
-          <button disabled={Boolean(reader.working)} onClick={() => settings && void ask(suggestion, 'suggestion', settings)}>{suggestion}</button>
+          <Button variant="secondary" className="h-auto w-full justify-start whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]" disabled={Boolean(reader.working)} onClick={() => settings && void ask(suggestion, 'suggestion', settings)}>{suggestion}</Button>
         </li>)}
       </ul>}
       <form onSubmit={submit}>
-        <label className="sr-only" htmlFor="question">Ask about this page</label>
-        <input id="question" placeholder="Ask about this page…" value={question} maxLength={2_000} onChange={(event) => setQuestion(event.target.value)} />
-        <button className="primary" aria-label="Send question" disabled={Boolean(reader.working) || !question.trim()}>Send</button>
+        <Label className="sr-only" htmlFor="question">Ask about this page</Label>
+        <Input id="question" placeholder="Ask about this page…" value={question} maxLength={2_000} onChange={(event) => setQuestion(event.target.value)} />
+        <Button type="submit" aria-label="Send question" disabled={Boolean(reader.working) || !question.trim()}>Send</Button>
       </form>
     </footer>}
   </div>;

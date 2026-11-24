@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button } from '@/src/components/ui/button';
 
 export function Diagram({ source }: { source: string }) {
   const code = source.trim().replace(/^```(?:mermaid)?\s*|\s*```$/gi, '');
@@ -35,9 +36,9 @@ export function Diagram({ source }: { source: string }) {
     {rendered?.source !== code ? <p className="muted">Rendering diagram…</p> : rendered.url
       ? <img src={rendered.url} alt="Flowchart of the main relationships described on this page" />
       : <><p className="muted">This diagram could not be rendered. Mermaid source is shown below.</p><pre>{code}</pre></>}
-    <button className="text-button" onClick={() => void navigator.clipboard.writeText(code).then(
+    <Button variant="ghost" size="sm" onClick={() => void navigator.clipboard.writeText(code).then(
       () => setCopied('Copied'), () => setCopied('Clipboard unavailable'),
-    )}>Copy as Mermaid</button>
+    )}>Copy as Mermaid</Button>
     <small aria-live="polite">{copied}</small>
   </div>;
 }
