@@ -22,8 +22,9 @@ test('a saved preference reaches a later explanation and the current depth takes
   const controller = new AbortController();
   const events = streamLearning(page, 'technical', context.prompt, gateway, controller.signal);
   const intro = await events.next();
-  assert.match(intro.value?.text ?? '', /TypeScript/);
-  assert.match(intro.value?.text ?? '', /selected depth takes priority/);
+  assert.ok(intro.value?.section === 'intro');
+  assert.match(intro.value.text, /TypeScript/);
+  assert.match(intro.value.text, /selected depth takes priority/);
   await events.return();
 
   await repo.setEnabled(false);

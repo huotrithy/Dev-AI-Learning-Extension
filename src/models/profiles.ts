@@ -5,16 +5,32 @@ export interface ModelHeader {
   value: string;
 }
 
-export interface ModelProfile {
+export interface ModelProfileDetails {
   id: string;
   label: string;
   provider: Provider;
   model: string;
   endpoint: string;
-  key: string;
-  customHeaders?: ModelHeader[];
   toolCalls: boolean;
   disableThinking: boolean;
+}
+
+export interface ModelProfile extends ModelProfileDetails {
+  key: string;
+  customHeaders?: ModelHeader[];
+  revision?: string;
+}
+
+export interface PublicModelProfile extends ModelProfileDetails {
+  keySaved: boolean;
+  headerNames: string[];
+  revision: string;
+}
+
+export interface PublicModelSettings {
+  profiles: PublicModelProfile[];
+  main: string;
+  system: string;
 }
 
 export interface ModelSettings {
@@ -23,22 +39,25 @@ export interface ModelSettings {
   system: string;
 }
 
-export const defaultSettings: ModelSettings = { profiles: [], main: '', system: '' };
+export const defaultSettings = { profiles: [], main: '', system: '' };
 
-export function createProfile(): ModelProfile {
+export function createProfileDetails(): ModelProfileDetails {
   return {
     id: crypto.randomUUID(),
-    label: 'Local Qwen',
+    label: '',
     provider: 'compatible',
-    model: 'mlx-community/Qwen3.5-4B-MLX-4bit',
+    model: '',
     endpoint: '',
-    key: '',
-    toolCalls: true,
-    disableThinking: true,
+    toolCalls: false,
+    disableThinking: false,
   };
 }
 
-export function modelEndpoint(profile: ModelProfile): URL {
+export function createProfile(): ModelProfile {
+  return { ...createProfileDetails(), key: '' };
+}
+
+export function modelEndpoint(profile: ModelProfileDetails): URL {
   if (profile.provider === 'openai') return new URL('https://api.openai.com/v1');
   if (profile.provider === 'anthropic') return new URL('https://api.anthropic.com/v1');
   const endpoint = new URL(profile.endpoint);
@@ -73,11 +92,29 @@ export function modelHeaders(profile: ModelProfile): Headers {
   return headers;
 }
 
+export class InsecureModelEndpointError extends Error {
+  constructor() {
+    super('Use HTTPS to send an API key to a model endpoint outside this computer.');
+  }
+}
+
+export function modelRequestEndpoint(profile: ModelProfile): URL {
+  const endpoint = modelEndpoint(profile);
+  if (profile.key && isRemoteHttp(endpoint)) throw new InsecureModelEndpointError();
+  return endpoint;
+}
+
+export function restrictModelStorage(): Promise<void> {
+  return chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+}
+
 export async function loadSettings(): Promise<ModelSettings> {
+  await restrictModelStorage();
   const stored = await chrome.storage.local.get<{ models?: ModelSettings }>('models');
   return stored.models ?? defaultSettings;
 }
 
 export async function saveSettings(settings: ModelSettings): Promise<void> {
+  await restrictModelStorage();
   await chrome.storage.local.set({ models: settings });
 }

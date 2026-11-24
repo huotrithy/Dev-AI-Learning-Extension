@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { z } from 'zod';
 import { createGateway, decideWithFallback } from '../src/models/gateway.ts';
+import { createProfile } from '../src/models/profiles.ts';
 import { LatestRequest, streamLearning } from '../src/learning/session.ts';
 
 test('streams the introduction while classification is pending', async () => {
@@ -59,5 +60,16 @@ test('provider errors after visible text still reject the response', async () =>
     assert.deepEqual(chunks, ['Partial']);
   } finally {
     globalThis.fetch = fetch;
+  }
+});
+
+test('model credentials require HTTPS outside loopback', () => {
+  const profile = { ...createProfile(), endpoint: 'http://192.168.1.5:8080/v1' };
+  assert.doesNotThrow(() => createGateway(profile, profile), 'Keyless LAN models still work');
+  const keyed = { ...profile, key: 'fixture-key' };
+  assert.throws(() => createGateway(profile, keyed), /Use HTTPS/);
+  for (const endpoint of ['http://localhost:8080/v1', 'http://127.0.0.1:8080/v1', 'http://[::1]:8080/v1', 'https://example.test/v1']) {
+    const local = { ...keyed, endpoint };
+    assert.doesNotThrow(() => createGateway(local, local), endpoint);
   }
 });

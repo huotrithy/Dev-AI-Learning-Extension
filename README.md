@@ -12,18 +12,65 @@ A Chrome side panel for learning technical pages with your own model. It streams
    pnpm run build
    ```
 
-3. Open a technical article and click the extension’s toolbar icon. In **Models**, save a provider profile and allow access to its endpoint when Chrome prompts. For MLX, choose **OpenAI-compatible**, enter the server’s `/v1` base URL, and use the model ID from that server. For the project’s Qwen profile, use `mlx-community/Qwen3.5-4B-MLX-4bit` with **Disable thinking (MLX)** enabled.
+3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, choose a provider, give the profile a name, and enter the model ID and credentials from your provider. For an **OpenAI-compatible** provider, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
 4. Return to **Read** and select **Learn this page**. Click the toolbar icon on a new tab when it needs page access.
 
+Expand **Activity** to see source reads, model calls, and fallbacks for an explanation or answer. Code snippets have line numbers and controls for wrapping and copying.
+
+Use **Open floating window** in the reader header to move it into a resizable window. Use **Dock to sidebar** to bring it back. Both modes read the active tab in the browser window where you opened the reader and carry your explanation, chat, and draft when you switch. Older browser versions may require you to close the sidebar manually after opening the floating window.
+
+An open chat or unsent draft stays with its original page when you switch tabs or follow a link. To start a new reading session on the active page, choose **Refresh page**. Before you start a chat or draft, leaving the current hostname closes the reader. Click the toolbar icon to open it on the new tab and grant access. The `tabs` permission lets the extension compare hostnames, while `activeTab` grants access to read page content when you click the icon. Older browsers without `sidePanel.close()` require you to close the sidebar manually after a site change.
+
+## Use FreeLLMAPI
+
+[FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) is an optional self-hosted gateway that routes requests through the model providers you configure. It works with the extension's existing OpenAI-compatible provider setting.
+
+1. Run the [Windows desktop app](https://apps.microsoft.com/detail/9PBN6G8K2B7F), or use the [Docker or Node.js setup](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/install/01-install.md) on your computer or a separate server.
+2. Open the FreeLLMAPI dashboard, add at least one upstream provider key under **Keys**, and copy the **unified API key**. The desktop app also offers **Copy Key** in its tray menu.
+3. In the extension, open **Settings** → **Model settings** and create a profile with these values.
+
+   | Field | Value |
+   | --- | --- |
+   | Profile name | `FreeLLMAPI` |
+   | Provider | **OpenAI-compatible (local or hosted)** |
+   | Base URL | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
+   | Model ID | `auto` to use the gateway's fallback chain |
+   | API key | The unified API key from FreeLLMAPI |
+   | Custom headers and advanced model options | Leave headers blank and both toggles off to start |
+
+4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it. You can also select the profile for **System 1** and test a fresh reading session.
+
+Keep the gateway running while you use the extension. When the gateway routes to a cloud provider, that provider receives the model request, which can include page excerpts, questions, and relevant saved preferences.
+
+## Conversation history
+
+Open **History** to review completed questions and answers by reading session. Each reply stays available in this browser for 30 days. Use **Clear history** to delete the archive at any time. The archive is for browsing, and follow-up questions use the active chat for context.
+
 ## Personalize it
+
+In **Settings** under **Appearance**, choose the reader theme and font, and enter a text size from 12 to 32 px. These choices are saved in this browser.
 
 Say “Always use TypeScript examples” in chat or save a preference under **Memory**. The sidebar uses signals across reading sessions to learn preferences and suggest follow-up questions relevant to the current page. In **Memory**, you can review the supporting requests, edit or delete memories, clear them, or pause learning and recall.
 
 Memory is stored in Chrome’s IndexedDB. Model requests can contain page excerpts, questions, and relevant saved preferences. Those requests go to the model endpoints you configure.
 
-## TODO
+The extension's background service worker sends model requests and loads the saved API key and custom header values for the selected profile. These credentials stay in the browser profile across restarts. Settings shows whether a key is saved and lists saved header names with blank value fields. Enter a replacement or use the remove control, then save the profile. Changing a profile's provider or base URL clears its credentials from the form.
 
-- [ ] Move model requests into the extension's background service worker. Use the saved model profile to resolve the endpoint and key in the worker. Preserve streaming, cancellation, and structured responses. Keep keys across browser restarts and show **Key saved** in Settings with options to replace or remove the key.
+Only trusted extension contexts can access the storage, and browser-profile storage is unencrypted. An endpoint with an API key or custom headers needs HTTPS unless it uses loopback on the same computer (`localhost`, `127.0.0.1`, or `[::1]`). Keyless local model endpoints can use HTTP.
+
+## Learn a GitHub repository
+
+Open a public repository's home page, click the extension icon, and choose **Learn this repo**. Allow access to `api.github.com` when prompted. The extension sends a file tree sample and excerpts from up to five files on the default branch to your configured model. Open **Files inspected** for links to the exact commit. Follow-up questions can read up to three more files from that commit using file names, symbols, and relative imports. Open **Files inspected for this answer** for links to the excerpts. Use **Refresh page** and learn the repo again to read its latest commit.
+
+The **Repository architecture** map shows how the components identified in the excerpts relate. Use the source links under each component to open its files at the inspected commit.
+
+## Learn a documentation site
+
+Open a documentation page and choose **Learn docs site**. Allow access to that site when prompted. The reader uses the current page and up to four linked pages on the same origin to generate a suggested reading path and answer follow-up questions with citations. Expand **Documentation pages read** to see the sources. Linked pages must serve readable HTML directly and are fetched without browser cookies. Use **Learn this page** to return to a single-page explanation.
+
+## Learn a YouTube video
+
+On a desktop YouTube watch page, expand the video description and select **Show transcript**. Click the extension icon and choose **Learn this video**. The reader sends caption excerpts to your configured model for an explanation, key moments, and follow-up answers. Click a timestamp citation to jump to that point in the original video tab. The video needs a transcript displayed by YouTube.
 
 ## Verify locally
 

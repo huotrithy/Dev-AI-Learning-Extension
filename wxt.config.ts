@@ -7,9 +7,15 @@ export default defineConfig({
     name: 'Dev AI Learning Extension',
     description: 'Learn technical pages with your own model and a local learning profile.',
     minimum_chrome_version: '116',
-    action: { default_title: 'Learn this page' },
-    permissions: ['activeTab', 'scripting', 'storage'],
+    action: {
+      default_title: 'Learn this page',
+      default_icon: { 16: 'icon/16.png', 32: 'icon/32.png', 48: 'icon/48.png' },
+    },
+    permissions: ['activeTab', 'scripting', 'storage', 'tabs'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
+    content_security_policy: {
+      extension_pages: "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+    },
   },
   vite: () => ({ plugins: [tailwindcss()] }),
 });

@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { chromium } from 'playwright-core';
 
 const prompts = [];
+const authorizationHeaders = [];
+const serviceTokens = [];
+const repoHome = 'https://github.com/example/fixture-reader';
+const repoCommit = 'a'.repeat(40);
+const repoFile = `${repoHome}/blob/${repoCommit}/src/index.ts`;
 const server = createServer(async (request, response) => {
   response.setHeader('access-control-allow-origin', '*');
   response.setHeader('access-control-allow-headers', '*');
@@ -19,6 +24,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  authorizationHeaders.push(request.headers.authorization);
+  serviceTokens.push([request.headers['cf-access-client-id'], request.headers['cf-access-client-secret']]);
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const { stream, messages } = JSON.parse(Buffer.concat(chunks));
@@ -39,6 +46,8 @@ const server = createServer(async (request, response) => {
   prompts.push({ system, prompt });
   const content = prompt.startsWith('Write one small Mermaid')
     ? 'flowchart LR\nA[Broker] --> B[Worker]'
+    : system.includes('The repository tree is a sample')
+      ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
     : 'Acknowledgments let a broker track whether a job finished.';
   response.writeHead(200, { 'content-type': 'text/event-stream' });
   response.write(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }] })}\n\n`);
@@ -47,15 +56,23 @@ const server = createServer(async (request, response) => {
 
 await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
 const origin = `http://127.0.0.1:${server.address().port}`;
-const extension = resolve('.output/chrome-mv3');
+const modelEndpoint = `http://localhost:${server.address().port}/v1`;
 const testRoot = resolve('.superpowers');
 await mkdir(testRoot, { recursive: true });
 const profile = await mkdtemp(join(testRoot, 'chromium-smoke-'));
 let context;
 
 try {
-  context = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium', headless: true,
+  const extension = join(profile, 'extension');
+  await cp(resolve('.output/chrome-mv3'), extension, { recursive: true });
+  const manifestPath = join(extension, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  // The fixture preloads a saved profile, including the host access granted during normal profile setup.
+  manifest.host_permissions = [...(manifest.host_permissions ?? []), 'http://localhost/*'];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  context = await chromium.launchPersistentContext(join(profile, 'browser'), {
+    channel: process.env.EXTENSION_TEST_CHANNEL ?? 'chromium', headless: true,
+    executablePath: process.env.EXTENSION_TEST_EXECUTABLE,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--remote-debugging-port=0'],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker', { timeout: 10_000 });
@@ -64,10 +81,14 @@ try {
     await chrome.storage.local.set({ models: {
       main: 'fixture', system: 'fixture', profiles: [{
         id: 'fixture', label: 'Fixture', provider: 'compatible', model: 'fixture', endpoint,
-        key: '', toolCalls: false, disableThinking: false,
+        key: 'fixture-key', toolCalls: false, disableThinking: false,
+        customHeaders: [
+          { name: 'CF-Access-Client-Id', value: 'fixture-id' },
+          { name: 'CF-Access-Client-Secret', value: 'fixture-secret' },
+        ],
       }],
     } });
-  }, `${origin}/v1`);
+  }, modelEndpoint);
 
   const article = context.pages()[0] ?? await context.newPage();
   await article.goto(`${origin}/first`);
@@ -75,7 +96,7 @@ try {
   const { targetInfos } = await tabCdp.send('Target.getTargets', { filter: [{ type: 'tab' }] });
   const articleTarget = targetInfos.find(({ url }) => url === article.url());
   assert.ok(articleTarget, 'Article tab is available');
-  const [port] = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
+  const [port] = (await readFile(join(profile, 'browser', 'DevToolsActivePort'), 'utf8')).split(/\r?\n/);
   const client = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const cdp = await client.newBrowserCDPSession();
   await cdp.send('Extensions.triggerAction', { id: extensionId, targetId: articleTarget.targetId });
@@ -87,7 +108,7 @@ try {
     if (!panelTarget) await setTimeout(100);
   }
   assert.ok(panelTarget, 'The toolbar action opens the native side panel');
-  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: panelTarget.targetId, flatten: false });
+  let { sessionId } = await cdp.send('Target.attachToTarget', { targetId: panelTarget.targetId, flatten: false });
   let commandId = 0;
 
   async function sendPanel(method, params) {
@@ -124,6 +145,16 @@ try {
     assert.fail(`Could not find ${text} in native side panel:\n${body}`);
   }
 
+  async function waitForAnswer(question, answer) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (await evaluate(`Array.from(document.querySelectorAll('.chat-turn')).some((turn) =>
+        turn.querySelector('h2')?.textContent === ${JSON.stringify(question)} &&
+        turn.querySelector('.prose')?.textContent.includes(${JSON.stringify(answer)}))`)) return;
+      await setTimeout(125);
+    }
+    assert.fail(`Could not find the answer to ${question} in the native side panel`);
+  }
+
   async function checkNarrowLayout(view) {
     assert.equal(await evaluate(`window.innerWidth === 320 &&
       document.documentElement.scrollWidth <= document.documentElement.clientWidth`), true, `${view} fits a 320-pixel sidebar`);
@@ -131,7 +162,7 @@ try {
 
   async function click(text) {
     assert.equal(await evaluate(`(() => {
-      const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === ${JSON.stringify(text)});
+      const button = [...document.querySelectorAll('button')].find((item) => (item.getAttribute('aria-label') ?? item.textContent.trim()) === ${JSON.stringify(text)});
       if (!button || button.disabled) return false;
       button.click(); return true;
     })()`), true, text);
@@ -149,15 +180,62 @@ try {
   }
 
   await waitFor('Reliable work queues');
+  const storageProtected = await worker.evaluate(async (url) => {
+    const tab = (await chrome.tabs.query({})).find((item) => item.url === url);
+    const [probe] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async () => {
+        try {
+          return !(await chrome.storage.local.get('models')).models;
+        } catch {
+          return true;
+        }
+      },
+    });
+    return probe.result;
+  }, article.url());
+  assert.equal(storageProtected, true, 'Code injected into the webpage cannot read model profiles');
   await sendPanel('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
   await checkNarrowLayout('Read');
+  assert.equal(await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    const form = question.form;
+    const send = form.querySelector('button[type="submit"]');
+    const style = getComputedStyle(question);
+    question.focus();
+    return send.disabled && !send.textContent.trim() && Boolean(send.querySelector('svg')) &&
+      question.clientHeight <= 2 * parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) &&
+      send.getBoundingClientRect().top >= question.getBoundingClientRect().bottom &&
+      getComputedStyle(form).outlineStyle === 'solid';
+  })()`), true, 'The empty composer fits two lines and shows a focus outline and an icon-only Send button');
   await evaluate(`(() => {
     const question = document.querySelector('#question');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(question, 'Always use TypeScript examples.');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'Always use TypeScript examples.');
     question.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-  await click('Send');
+  await click('Send question');
   await waitFor('Acknowledgments let a broker track');
+  assert.equal(authorizationHeaders.at(-1), 'Bearer fixture-key', 'The stored key is used for the loopback model');
+  assert.deepEqual(serviceTokens.at(-1), ['fixture-id', 'fixture-secret'], 'The worker sends the saved Cloudflare headers');
+  await checkNarrowLayout('Read with a reply');
+  await sendPanel('Emulation.setDeviceMetricsOverride', { width: 1130, height: 900, deviceScaleFactor: 1, mobile: false });
+  const readingLayout = await evaluate(`(async () => {
+    const paragraph = document.querySelector('.chat-turn .prose p');
+    const style = getComputedStyle(paragraph);
+    const fonts = await document.fonts.load(style.fontSize + ' ' + style.fontFamily, paragraph.textContent);
+    return {
+      fontSize: parseFloat(style.fontSize),
+      fontLoaded: fonts.some((font) => font.family.includes('Atkinson Hyperlegible Next') && font.status === 'loaded'),
+      cardWidth: paragraph.closest('.chat-turn').getBoundingClientRect().width,
+      lineWidth: paragraph.getBoundingClientRect().width,
+      composerWidth: document.querySelector('.composer form').getBoundingClientRect().width,
+    };
+  })()`);
+  assert.ok(readingLayout.fontSize >= 17 && readingLayout.fontLoaded, `Use the larger, bundled reading font: ${JSON.stringify(readingLayout)}`);
+  assert.ok(readingLayout.cardWidth >= 900, 'Reading cards grow on a wide sidebar');
+  assert.ok(readingLayout.lineWidth < readingLayout.cardWidth - 100, 'Prose keeps a readable line length on a wide sidebar');
+  assert.ok(Math.abs(readingLayout.composerWidth - readingLayout.cardWidth) < 1, 'The composer aligns with the reading cards');
+  await sendPanel('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
   await waitFor('Learn this page');
   await setTimeout(400);
   await click('Memory');
@@ -178,6 +256,7 @@ try {
   await click('Read');
 
   await article.goto(`${origin}/second`);
+  await click('Refresh page');
   await waitFor('Queue acknowledgments');
   await click('Learn this page');
   await waitFor('What happens if a worker crashes before acknowledging a job?');
@@ -225,19 +304,216 @@ try {
   await click('Clear memory');
   await click('Clear all');
   await waitFor('No saved preferences yet.');
-  await click('Models');
+  await click('Settings');
+  await waitFor('Appearance');
   await waitFor('Model settings');
-  await checkNarrowLayout('Models');
+  await checkNarrowLayout('Settings');
   await select('Edit profile', 'new');
+  assert.deepEqual(await evaluate(`['profile-name', 'model-id'].map((id) => document.getElementById(id).value)`), ['', '']);
   await select('Provider', 'anthropic');
   assert.equal(await evaluate('document.querySelector("#base-url") === null'), true, 'Hosted profiles hide the base URL field');
+  await evaluate(`(() => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    for (const id of ['profile-name', 'model-id']) {
+      const field = document.getElementById(id);
+      set.call(field, 'new-fixture');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  })()`);
   await click('Save profile');
   await waitFor('Enter an API key for this provider.');
   await select('Edit profile', 'fixture');
   await waitFor('Base URL');
   assert.equal(await evaluate('document.querySelector("#profile-name").value'), 'Fixture');
+  await waitFor('Key saved');
+  assert.equal(await evaluate('document.querySelector("#header-value-1").value'), '');
+  await evaluate(`(() => {
+    const field = document.querySelector('#header-value-1');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'rotated-fixture-secret');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await click('Save profile');
+  await waitFor('Profile saved.');
+  assert.equal(await evaluate('document.querySelector("#header-value-1").value'), '');
+  await select('Theme', 'dark');
+  await select('Font', 'serif');
+  async function enterTextSize(value) {
+    await evaluate(`(() => {
+      const input = document.querySelector('#appearance-size');
+      input.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+  }
+  await enterTextSize('23');
+  assert.deepEqual(await evaluate(`(() => {
+    const style = getComputedStyle(document.body);
+    return { theme: style.colorScheme, font: style.fontFamily.split(',')[0], size: style.fontSize };
+  })()`), { theme: 'dark', font: 'Georgia', size: '23px' });
+  await enterTextSize('99');
+  assert.equal(await evaluate(`document.querySelector('#appearance-size').getAttribute('aria-invalid')`), 'true');
+  assert.equal(await evaluate('getComputedStyle(document.body).fontSize'), '23px');
+  await evaluate(`document.querySelector('#appearance-size').blur()`);
+  assert.equal(await evaluate(`document.querySelector('#appearance-size').value`), '23');
+  await checkNarrowLayout('Settings with custom text size');
+  await select('Theme', 'system');
+  for (const value of ['light', 'dark']) {
+    await sendPanel('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
+    let applied;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      applied = await evaluate('getComputedStyle(document.body).colorScheme');
+      if (applied === value) break;
+      await setTimeout(50);
+    }
+    assert.equal(applied, value, 'The sidebar reacts to system theme changes');
+  }
+  await select('Theme', 'dark');
+
+  await click('Read');
+  await waitFor('Copy as Mermaid');
+  assert.equal(await evaluate("document.querySelector('#question').matches('textarea')"), true, 'The follow-up field accepts multiple lines');
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('#question')).fontSize"), '23px');
+  await evaluate(`(() => {
+    const input = document.querySelector('#question');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'What does the broker track?');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await click('Send question');
+  await waitForAnswer('What does the broker track?', 'Acknowledgments let a broker track');
+  assert.deepEqual(serviceTokens.at(-1), ['fixture-id', 'rotated-fixture-secret'], 'Replacing a header leaves other credentials intact');
+  const draft = 'Draft follows the reader\nwith more context';
+  await evaluate(`(() => {
+    const input = document.querySelector('#question');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, ${JSON.stringify(draft)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  const [floating] = await Promise.all([
+    context.waitForEvent('page', { timeout: 10_000 }),
+    click('Open floating window'),
+  ]);
+  await floating.getByRole('heading', { name: 'Queue acknowledgments' }).waitFor();
+  await floating.getByText('Copy as Mermaid').waitFor();
+  await floating.getByRole('heading', { name: 'What does the broker track?' }).waitFor();
+  assert.equal(await floating.locator('#question').inputValue(), draft);
+  assert.equal(await floating.evaluate(async () => (await chrome.windows.getCurrent()).type), 'popup');
+  assert.equal(await floating.evaluate(() => getComputedStyle(document.body).colorScheme), 'dark');
+  const sidebarUrl = `chrome-extension://${extensionId}/sidepanel.html`;
+  const targets = () => cdp.send('Target.getTargets', { filter: [{ type: 'page' }] });
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (!(await targets()).targetInfos.some(({ url }) => url === sidebarUrl)) break;
+    await setTimeout(100);
+  }
+  assert.ok(!(await targets()).targetInfos.some(({ url }) => url === sidebarUrl), 'Undocking closes the native side panel');
+  await cdp.send('Extensions.triggerAction', { id: extensionId, targetId: articleTarget.targetId });
+  await setTimeout(250);
+  assert.ok(!(await targets()).targetInfos.some(({ url }) => url === sidebarUrl), 'The toolbar reuses the floating reader');
+  await Promise.all([
+    floating.waitForEvent('close', { timeout: 10_000 }),
+    floating.getByRole('button', { name: 'Dock to sidebar' }).click(),
+  ]);
+  panelTarget = (await targets()).targetInfos.find(({ url }) => url === sidebarUrl);
+  assert.ok(panelTarget, 'Docking reopens the native side panel');
+  ({ sessionId } = await cdp.send('Target.attachToTarget', { targetId: panelTarget.targetId, flatten: false }));
+  await waitFor('Copy as Mermaid');
+  await waitForAnswer('What does the broker track?', 'Acknowledgments let a broker track');
+  assert.equal(await evaluate("document.querySelector('#question').value"), draft);
+
+  const { sameHostTab, otherHostTab } = await worker.evaluate(async (origin) => {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const sameHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin}/first` });
+    const otherHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin.replace('127.0.0.1', 'localhost')}/first` });
+    return { sameHostTab: sameHost.id, otherHostTab: otherHost.id };
+  }, origin);
+  const activate = (tabId) => worker.evaluate((id) => chrome.tabs.update(id, { active: true }), tabId);
+  const articleTab = await worker.evaluate(async (url) => (await chrome.tabs.query({})).find((tab) => tab.url === url).id, article.url());
+  await activate(sameHostTab);
+  await setTimeout(300);
+  await waitForAnswer('What does the broker track?', 'Acknowledgments let a broker track');
+  await activate(otherHostTab);
+  await waitForAnswer('What does the broker track?', 'Acknowledgments let a broker track');
+  await activate(articleTab);
+  await article.goto(`${origin}/guides/first`);
+  await waitForAnswer('What does the broker track?', 'Acknowledgments let a broker track');
+  await waitFor('Queue acknowledgments');
+  assert.equal(await evaluate("document.querySelector('#question').value"), draft);
+  const [floatingAgain] = await Promise.all([
+    context.waitForEvent('page', { timeout: 10_000 }),
+    click('Open floating window'),
+  ]);
+  await floatingAgain.getByRole('heading', { name: 'Queue acknowledgments' }).waitFor();
+  await activate(otherHostTab);
+  await floatingAgain.getByRole('heading', { name: 'What does the broker track?' }).waitFor();
+  assert.equal(await floatingAgain.locator('#question').inputValue(), draft);
+  await activate(articleTab);
+  await floatingAgain.getByRole('button', { name: 'Refresh page', exact: true }).click();
+  await floatingAgain.getByRole('heading', { name: 'Reliable work queues' }).waitFor();
+  assert.equal(await floatingAgain.getByRole('heading', { name: 'What does the broker track?' }).count(), 0);
+  await Promise.all([floatingAgain.waitForEvent('close', { timeout: 5_000 }), activate(otherHostTab)]);
+
+  const reopened = await context.newPage();
+  await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await reopened.getByRole('button', { name: 'Settings' }).click();
+  await reopened.getByText('Key saved', { exact: true }).waitFor();
+  assert.equal(await reopened.locator('#api-key').inputValue(), '', 'The saved key is absent from the form');
+  assert.equal(await reopened.locator('#header-name-1').inputValue(), 'CF-Access-Client-Secret');
+  assert.equal(await reopened.locator('#header-value-1').inputValue(), '', 'The saved service token is absent from the form');
+  assert.deepEqual(await Promise.all(['Theme', 'Font', 'Text size (px)', 'Edit profile'].map((label) => reopened.getByLabel(label, { exact: true }).inputValue())),
+    ['dark', 'serif', '23', 'fixture']);
+  await reopened.getByRole('button', { name: 'History', exact: true }).click();
+  await reopened.locator('summary').filter({ hasText: 'Queue acknowledgments' }).click();
+  await reopened.getByRole('heading', { name: 'What does the broker track?' }).waitFor();
+  await reopened.getByRole('button', { name: 'Clear history', exact: true }).click();
+  await reopened.getByRole('button', { name: 'Clear all', exact: true }).click();
+  await reopened.getByText('No saved conversations yet.').waitFor();
+  await reopened.close();
+
+  await context.route(repoHome, (route) => route.fulfill({ contentType: 'text/html', body: '<title>Public repository fixture</title>' }));
+  await article.goto(repoHome);
+  await activate(articleTab);
+  await cdp.send('Extensions.triggerAction', { id: extensionId, targetId: articleTarget.targetId });
+  panelTarget = undefined;
+  for (let attempt = 0; attempt < 40 && !panelTarget; attempt += 1) {
+    panelTarget = (await targets()).targetInfos.find(({ url }) => url === sidebarUrl);
+    if (!panelTarget) await setTimeout(100);
+  }
+  assert.ok(panelTarget, 'The toolbar opens the sidebar for a GitHub repository');
+  ({ sessionId } = await cdp.send('Target.attachToTarget', { targetId: panelTarget.targetId, flatten: false }));
+  await sendPanel('Emulation.setDeviceMetricsOverride', { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
+  await waitFor('Learn this repo');
+  await evaluate(`(() => {
+    const api = 'https://api.github.com/repos/example/fixture-reader';
+    const commit = ${JSON.stringify(repoCommit)};
+    const tree = 'b'.repeat(40);
+    const realFetch = globalThis.fetch;
+    chrome.permissions.request = async ({ origins }) => {
+      if (origins.join() !== 'https://api.github.com/*') throw new Error('Unexpected permissions request');
+      return true;
+    };
+    globalThis.fetch = async (url, options) => {
+      if (url === api) return Response.json({ default_branch: 'main' });
+      if (url === api + '/commits/main') return Response.json({ sha: commit, commit: { tree: { sha: tree } } });
+      if (url === api + '/git/trees/' + tree + '?recursive=1') return Response.json({ truncated: false, tree: [{ path: 'src/index.ts', type: 'blob', mode: '100644', size: 43 }] });
+      if (url === api + '/contents/src/index.ts?ref=' + commit) return new Response('startReader renders the fixture architecture');
+      return realFetch(url, options);
+    };
+  })()`);
+  await click('Learn this repo');
+  await waitFor('Files inspected (1)');
+  await waitFor('Explain again');
+  assert.ok(prompts.some(({ prompt }) => prompt.includes('startReader') && prompt.includes(repoFile)), 'The overview receives the inspected code and commit link');
+  assert.equal(await evaluate(`document.querySelector('.learning-section .prose a')?.href`), repoFile);
+  assert.equal(await evaluate(`Boolean(document.querySelector('.learning-section a[href="https://example.org/invented"]'))`), false);
+  await checkNarrowLayout('Repo Mode');
+  await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'Where is startReader called?');
+    question.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await click('Send question');
+  await waitForAnswer('Where is startReader called?', 'Fixture architecture uses');
+  assert.ok(prompts.some(({ prompt }) => prompt.includes('Question: Where is startReader called?') && prompt.includes(repoFile)));
   await client.close();
-  console.log('Chromium smoke passed: narrow sidebar, visible keyboard focus, model settings, extraction, chat, memory editing, personalization, diagram, pause, and clearing.');
+  console.log('Browser smoke passed: reader windows, appearance, settings, extraction, chat, memory, diagrams, and GitHub Repo Mode.');
 } finally {
   await context?.close();
   server.close();

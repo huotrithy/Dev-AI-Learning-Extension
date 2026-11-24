@@ -1,8 +1,8 @@
-import { z } from 'zod';
 import { pageContext } from '../learning/prompts.ts';
+import { decisionSchemas } from '../models/decision-schemas.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import type { PageSource } from '../page/extract.ts';
-import { choiceSchema, type MemoryContext, type Observation } from './types.ts';
+import type { MemoryContext, Observation } from './types.ts';
 
 export interface UserTurn {
   text: string;
@@ -10,12 +10,7 @@ export interface UserTurn {
   scope: string;
 }
 
-const observationSchema = z.object({ observations: z.array(z.object({
-  choice: choiceSchema,
-  topicSpecific: z.boolean(),
-  evidence: z.string().trim().min(1).max(200).optional(),
-})).max(3) });
-const suggestionsSchema = z.object({ questions: z.array(z.string().trim().min(4).max(140)).max(3) });
+const { observations: observationSchema, suggestions: suggestionsSchema } = decisionSchemas;
 const standingRequest = /^(?:(?:please|can you|could you)\s+)?(?:always\s+(?:use|give|start|show|include|explain|prefer|write|keep|put|lead|walk|answer)\b|from now on\b|in (?:the )?future\b|by default\b|remember\b|my preference\b|i prefer\b)/i;
 
 export async function extractObservations(turn: UserTurn, gateway: ModelGateway, signal: AbortSignal): Promise<Observation[]> {

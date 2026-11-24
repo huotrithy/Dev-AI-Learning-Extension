@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/src/components/ui/button';
 
-export function Diagram({ source }: { source: string }) {
+export function Diagram({ source, description = 'Flowchart of the main relationships described on this page' }: { source: string; description?: string }) {
   const code = source.trim().replace(/^```(?:mermaid)?\s*|\s*```$/gi, '');
   const [rendered, setRendered] = useState<{ source: string; url?: string }>();
   const [copied, setCopied] = useState('');
@@ -34,7 +34,7 @@ export function Diagram({ source }: { source: string }) {
 
   return <div className="diagram">
     {rendered?.source !== code ? <p className="muted">Rendering diagram…</p> : rendered.url
-      ? <img src={rendered.url} alt="Flowchart of the main relationships described on this page" />
+      ? <img src={rendered.url} alt={description} />
       : <><p className="muted">This diagram could not be rendered. Mermaid source is shown below.</p><pre>{code}</pre></>}
     <Button variant="ghost" size="sm" onClick={() => void navigator.clipboard.writeText(code).then(
       () => setCopied('Copied'), () => setCopied('Clipboard unavailable'),

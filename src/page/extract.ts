@@ -1,9 +1,16 @@
 import { Readability } from '@mozilla/readability';
+import type { RepositorySource } from './github.ts';
+import type { DocsPage } from './docs.ts';
+import type { VideoTranscript } from './youtube.ts';
 
 export interface PageSource {
   title: string;
   url: string;
   text: string;
+  repository?: RepositorySource;
+  relatedLinks?: string[];
+  docs?: DocsPage[];
+  video?: VideoTranscript;
 }
 
 export function extractPage(document: Document): PageSource | null {
