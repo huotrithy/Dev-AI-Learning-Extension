@@ -7,8 +7,8 @@ import { Input } from '@/src/components/ui/input';
 import { Label } from '@/src/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/src/components/ui/native-select';
 import {
-  createProfile, hostPermission, modelEndpoint, saveSettings, type ModelProfile, type ModelSettings as Settings,
-  type Provider,
+  createProfile, hostPermission, modelEndpoint, modelHeaders, saveSettings,
+  type ModelHeader, type ModelProfile, type ModelSettings as Settings, type Provider,
 } from '../../src/models/profiles.ts';
 
 const providers: Record<Provider, string> = {
@@ -20,16 +20,25 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const customHeaders = profile.customHeaders ?? [];
 
   function change<K extends keyof ModelProfile>(key: K, value: ModelProfile[K]) {
     setProfile((current) => {
       const next = { ...current, [key]: value };
-      if (key === 'provider' && value !== current.provider) next.key = '';
-      if (key === 'endpoint' && value !== current.endpoint && settings.profiles.some(({ id }) => id === current.id)) next.key = '';
+      const changedProvider = key === 'provider' && value !== current.provider;
+      const changedSavedEndpoint = key === 'endpoint' && value !== current.endpoint && settings.profiles.some(({ id }) => id === current.id);
+      if (changedProvider || changedSavedEndpoint) {
+        next.key = '';
+        next.customHeaders = [];
+      }
       return next;
     });
     setError('');
     setNotice('');
+  }
+
+  function changeHeader(index: number, update: Partial<ModelHeader>) {
+    change('customHeaders', customHeaders.map((header, position) => position === index ? { ...header, ...update } : header));
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -38,9 +47,13 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
     setNotice('');
     setSaving(true);
     try {
-      const candidate = { ...profile, label: profile.label.trim(), model: profile.model.trim(), endpoint: profile.endpoint.trim(), key: profile.key.trim() };
+      const candidate = {
+        ...profile, label: profile.label.trim(), model: profile.model.trim(), endpoint: profile.endpoint.trim(), key: profile.key.trim(),
+        customHeaders: customHeaders.map(({ name, value }) => ({ name: name.trim(), value })),
+      };
       if (!candidate.label || !candidate.model) throw new Error('Enter a profile name and a model ID.');
       if (candidate.provider !== 'compatible' && !candidate.key) throw new Error('Enter an API key for this provider.');
+      modelHeaders(candidate);
       const endpoint = modelEndpoint(candidate);
       const granted = await chrome.permissions.request({ origins: [hostPermission(endpoint)] });
       if (!granted) throw new Error('Allow access to the model endpoint to save this profile.');
@@ -137,6 +150,25 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
         <Label htmlFor="api-key">API key{profile.provider === 'compatible' ? ' (optional)' : ''}</Label>
         <Input id="api-key" type="password" autoComplete="off" value={profile.key} onChange={(event) => change('key', event.target.value)} />
       </div>
+      <fieldset className="form-grid">
+        <legend className="text-sm font-medium">Custom headers</legend>
+        {customHeaders.map(({ name, value }, index) => <div className="field" key={index}>
+          <Label htmlFor={`header-name-${index}`}>Header name</Label>
+          <Input id={`header-name-${index}`} placeholder="X-API-Key" autoComplete="off" spellCheck={false} required value={name}
+            onChange={(event) => changeHeader(index, { name: event.target.value })} />
+          <Label htmlFor={`header-value-${index}`}>Header value</Label>
+          <Input id={`header-value-${index}`} type="password" autoComplete="off" value={value}
+            onChange={(event) => changeHeader(index, { value: event.target.value })} />
+          <div className="button-row">
+            <Button type="button" variant="ghost" size="sm" aria-label={`Remove header ${name || index + 1}`}
+              onClick={() => change('customHeaders', customHeaders.filter((_, position) => position !== index))}>Remove header</Button>
+          </div>
+        </div>)}
+        <div className="button-row">
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => change('customHeaders', [...customHeaders, { name: '', value: '' }])}>Add header</Button>
+        </div>
+      </fieldset>
       <div className="checkbox-row">
         <Checkbox id="tool-calls" checked={profile.toolCalls} onCheckedChange={(checked) => change('toolCalls', checked)} />
         <Label htmlFor="tool-calls">Support forced tool calls</Label>
@@ -145,7 +177,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
         <Checkbox id="disable-thinking" checked={profile.disableThinking} onCheckedChange={(checked) => change('disableThinking', checked)} />
         <Label htmlFor="disable-thinking">Disable thinking (MLX)</Label>
       </div>}
-      <p className="muted">This profile sends model requests and its API key to <strong>{destination}</strong>. Requests can include page text, questions, and relevant memories.</p>
+      <p className="muted">This profile sends model requests, its API key, and custom headers to <strong>{destination}</strong>. Requests can include page text, questions, and relevant memories.</p>
       <div className="button-row">
         <Button type="submit" disabled={saving}>Save profile</Button>
         {settings.profiles.some(({ id }) => id === profile.id) && <Button type="button" variant="ghost" onClick={() => void remove()}>Remove</Button>}

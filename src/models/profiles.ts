@@ -1,5 +1,10 @@
 export type Provider = 'compatible' | 'openai' | 'anthropic';
 
+export interface ModelHeader {
+  name: string;
+  value: string;
+}
+
 export interface ModelProfile {
   id: string;
   label: string;
@@ -7,6 +12,7 @@ export interface ModelProfile {
   model: string;
   endpoint: string;
   key: string;
+  customHeaders?: ModelHeader[];
   toolCalls: boolean;
   disableThinking: boolean;
 }
@@ -44,6 +50,27 @@ export function modelEndpoint(profile: ModelProfile): URL {
 
 export function hostPermission(endpoint: URL): string {
   return `${endpoint.protocol}//${endpoint.hostname}/*`;
+}
+
+function isRemoteHttp(endpoint: URL): boolean {
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
+  return endpoint.protocol === 'http:' && !loopback;
+}
+
+export function modelHeaders(profile: ModelProfile): Headers {
+  if (profile.customHeaders?.length && isRemoteHttp(modelEndpoint(profile))) {
+    throw new Error('Use HTTPS to send custom headers to a model endpoint outside this computer.');
+  }
+  const headers = new Headers();
+  for (const [index, header] of (profile.customHeaders ?? []).entries()) {
+    const name = header.name.trim();
+    try {
+      headers.append(name, header.value);
+    } catch {
+      throw new Error(`Enter a valid HTTP header name and value for header ${index + 1}.`);
+    }
+  }
+  return headers;
 }
 
 export async function loadSettings(): Promise<ModelSettings> {
