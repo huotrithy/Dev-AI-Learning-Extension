@@ -21,6 +21,10 @@ Say “Always use TypeScript examples” in chat or save a preference under **Me
 
 Memory is stored in Chrome’s IndexedDB. Model requests can contain page excerpts, questions, and relevant saved preferences. Those requests go to the model endpoints you configure.
 
+## TODO
+
+- [ ] Move model requests into the extension's background service worker. Use the saved model profile to resolve the endpoint and key in the worker. Preserve streaming, cancellation, and structured responses. Keep keys across browser restarts and show **Key saved** in Settings with options to replace or remove the key.
+
 ## Verify locally
 
 ```sh
