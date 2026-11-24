@@ -1,10 +1,10 @@
-import { findFloatingReader, floatingReaderUrl } from '../../src/learning/reader-window.ts';
+import { findFloatingReader, floatingReaderUrl, readerSourceWindowParam } from '../../src/learning/reader-window.ts';
 import { snapshotReader, type ReaderSnapshot } from './reader.ts';
 
 export type View = 'read' | 'history' | 'memory' | 'settings';
 type Handoff = { id: string; expires: number; reader: ReaderSnapshot; view: View };
 
-const source = new URLSearchParams(location.search).get('sourceWindow');
+const source = new URLSearchParams(location.search).get(readerSourceWindowParam);
 export const floatingSource = source && /^\d+$/.test(source) ? Number(source) : undefined;
 export const floating = floatingSource !== undefined;
 

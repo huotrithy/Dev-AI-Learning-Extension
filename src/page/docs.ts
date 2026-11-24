@@ -2,6 +2,10 @@ import { extractPage, type PageSource } from './extract.ts';
 
 const maxPages = 4;
 const maxBytes = 1_000_000;
+const maxTitleCharacters = 200;
+const maxExcerptCharacters = 3_600;
+const sequentialLinkWeight = 4;
+const sameSectionLinkWeight = 2;
 
 export type DocsPage = Pick<PageSource, 'title' | 'url' | 'text'>;
 
@@ -42,8 +46,8 @@ export function docsLinks(document: Document, address: string): string[] {
     if (anchor.closest('header, footer, form, [hidden]')) continue;
     const url = relatedUrl(anchor.getAttribute('href') ?? '', current, base);
     if (!url) continue;
-    const score = (anchor.matches('[rel~="next"], [rel~="prev"]') ? 4 : 0) +
-      (new URL(url).pathname.split('/')[1] === section ? 2 : 0) +
+    const score = (anchor.matches('[rel~="next"], [rel~="prev"]') ? sequentialLinkWeight : 0) +
+      (new URL(url).pathname.split('/')[1] === section ? sameSectionLinkWeight : 0) +
       Number(Boolean(anchor.closest('main, article, [role="main"]')));
     if (score) links.set(url, Math.max(links.get(url) ?? 0, score));
   }
@@ -93,11 +97,11 @@ export async function loadDocs(
       const document = parser.parseFromString('', 'text/html');
       const template = document.createElement('template');
       template.innerHTML = html;
-      document.title = template.content.querySelector('title')?.textContent?.trim().slice(0, 200) || new URL(url).pathname;
+      document.title = template.content.querySelector('title')?.textContent?.trim().slice(0, maxTitleCharacters) || new URL(url).pathname;
       template.content.querySelectorAll('title, base, script, style, link, meta, img, iframe, picture, audio, video, object, embed, source, svg').forEach((node) => node.remove());
       document.body.append(template.content);
       const source = extractPage(document);
-      if (source) return { title: source.title, url, text: source.text.slice(0, 3_600) };
+      if (source) return { title: source.title, url, text: source.text.slice(0, maxExcerptCharacters) };
     } catch {
       signal.throwIfAborted();
     }

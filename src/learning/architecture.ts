@@ -3,7 +3,9 @@ import { decisionSchemas } from "../models/decision-schemas.ts";
 import type { ModelGateway } from "../models/gateway.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile, RepositorySource } from "../page/github.ts";
-import { pageContext, teacherPrompt } from "./prompts.ts";
+import { learningLimits } from "./config.ts";
+import { pageContext } from "./context.ts";
+import { architectureInstructions } from "./prompts.ts";
 
 const architectureSchema = decisionSchemas.architecture;
 
@@ -24,10 +26,9 @@ export async function readArchitecture(
   const decision = await gateway
     .decide(
       {
-        system: `${teacherPrompt}
-Build a small architecture map of the repository. Use only components supported by the supplied file excerpts. For each component, return its short name and the exact file paths from those excerpts. Connect components only when the excerpts support the relationship. Connection endpoints are zero-based indices into components, and labels are short verbs such as "queues work for" or "calls". Return empty arrays when the excerpts do not establish an architecture.`,
-        prompt: pageContext(page, 12_000),
-        maxOutputTokens: 1_000,
+        system: architectureInstructions,
+        prompt: pageContext(page, learningLimits.context.detailed),
+        maxOutputTokens: learningLimits.outputTokens.architecture,
         activity: "Map repository architecture",
       },
       architectureSchema,

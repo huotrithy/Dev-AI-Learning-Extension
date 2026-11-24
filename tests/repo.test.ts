@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { githubRepository, loadRepository, traceRepository } from '../src/page/github.ts';
-import { pageContext } from '../src/learning/prompts.ts';
+import { pageContext } from '../src/learning/context.ts';
 import { streamLearning, type LearningEvent } from '../src/learning/session.ts';
 import { architectureFlowchart } from '../src/learning/architecture.ts';
 
