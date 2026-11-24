@@ -1,0 +1,10 @@
+node_modules/
+.output/
+.wxt/
+.npm-cache/
+.superpowers/
+/2026-11-22-143140-i-want-to-build-a-llm-that-help-me-learn-and-read.txt
+/pwd
+.env
+.env.*
+!.env.example
