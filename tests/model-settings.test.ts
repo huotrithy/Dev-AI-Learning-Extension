@@ -67,3 +67,38 @@ test("a stale profile editor cannot overwrite credentials saved in another reade
     profile: { ...visible, label: "Renamed", customHeaders: [] },
   }), /profile changed/i);
 });
+
+void test("an exact chat URL change requires fresh credentials", () => {
+  const [visible] = publicModelSettings(stored).profiles;
+  assert.ok(visible);
+  const updated = { ...visible, chatEndpoint: "https://example.test/custom/chat" };
+  assert.throws(() => applyModelSettingsCommand(stored, {
+    type: "save-profile",
+    profile: { ...updated, customHeaders: [{ name: headerName, savedIndex: 0 }] },
+  }), /saved header/i);
+  const [saved] = applyModelSettingsCommand(stored, {
+    type: "save-profile",
+    profile: { ...updated, customHeaders: [] },
+  }).profiles;
+  assert.ok(saved);
+  assert.equal(saved.key, "");
+  assert.equal(saved.chatEndpoint, updated.chatEndpoint);
+});
+
+void test("a decision profile cannot become the explanation model", () => {
+  const decision = { ...createProfile(), id: "decision", label: "Decision", provider: "freellm-decisions" as const, model: "auto", endpoint: "https://example.test/v1/decisions" };
+  const settings = applyModelSettingsCommand(stored, { type: "save-profile", profile: { ...decision, customHeaders: [] } });
+  assert.throws(() => applyModelSettingsCommand(settings, { type: "assign-profile", role: "main", id: decision.id }), /select a chat profile/i);
+  const assigned = applyModelSettingsCommand(settings, { type: "assign-profile", role: "system", id: decision.id });
+  const remaining = applyModelSettingsCommand(assigned, { type: "remove-profile", id: profile.id, revision: "legacy" });
+  assert.equal(remaining.main, "");
+  assert.equal(remaining.system, decision.id);
+});
+
+void test("an exact chat URL cannot hide credentials in a saved base URL", () => {
+  const chat = { ...createProfile(), label: "Chat", model: "fixture", endpoint: "https://example.test/v1?token=fixture", chatEndpoint: "https://example.test/generate" };
+  assert.throws(() => applyModelSettingsCommand(stored, {
+    type: "save-profile",
+    profile: { ...chat, customHeaders: [] },
+  }), /without credentials, a query, or a fragment/);
+});

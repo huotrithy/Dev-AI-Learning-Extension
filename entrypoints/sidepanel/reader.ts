@@ -9,7 +9,7 @@ import { extractObservations, prepareSuggestions, type UserTurn } from "../../sr
 import { pageScope } from "../../src/memory/policy.ts";
 import { DexieMemoryRepository, runWithCurrentMemory } from "../../src/memory/repository.ts";
 import { emptyMemory } from "../../src/memory/types.ts";
-import { InsecureModelEndpointError, type PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
+import { decisionProvider, InsecureModelEndpointError, type PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
 import { createWorkerGateway, ModelProfileChangedError } from "../../src/models/worker-client.ts";
 import type { ModelGateway } from "../../src/models/gateway.ts";
 import { readTab, readYouTube } from "../../src/page/active-tab.ts";
@@ -83,7 +83,10 @@ function selectedGateway(settings: ModelSettings) {
   const system = settings.profiles.find(profile => profile.id === settings.system);
   if (!main)
     throw new Error("Select an explanation model.");
-  return { gateway: createWorkerGateway(main, system ?? main), models: { main: main.model, system: (system ?? main).model } };
+  return {
+    gateway: createWorkerGateway(main, system ?? main),
+    models: { main: main.model, system: (system ?? main).model, classificationOnly: system?.provider === decisionProvider },
+  };
 }
 
 function clearSuggestions(): void {

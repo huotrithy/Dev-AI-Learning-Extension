@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { decisionSchemas } from "../src/models/decision-schemas.ts";
-import { createProfile } from "../src/models/profiles.ts";
+import { createProfile, type ModelProfile } from "../src/models/profiles.ts";
 import { serveModelPort } from "../src/models/worker.ts";
 import { createWorkerGateway, ModelProfileChangedError } from "../src/models/worker-client.ts";
 
@@ -25,7 +25,7 @@ function channel<T>() {
   };
 }
 
-function connectWorker(t: TestContext, profiles = [profile]) {
+function connectWorker(t: TestContext, profiles: ModelProfile[] = [profile]) {
   const messages: unknown[] = [];
   const originalChrome = Object.getOwnPropertyDescriptor(globalThis, "chrome");
   t.after(() => {
@@ -127,6 +127,73 @@ test("a stale reader cannot send page text to a profile that has moved", async (
   connectWorker(t, [{ ...profile, endpoint: "https://another.test/v1" }]);
   const fetch = t.mock.method(globalThis, "fetch", () => assert.fail("A stale profile must not fetch"));
   const iterator = createWorkerGateway(profile, profile).stream(request, new AbortController().signal)[Symbol.asyncIterator]();
+  await assert.rejects(iterator.next(), ModelProfileChangedError);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+void test("an exact chat URL is used for both streaming and structured chat", async (t) => {
+  const chat = { ...profile, endpoint: "", chatEndpoint: "https://example.test/custom/generate" };
+  connectWorker(t, [chat]);
+  const urls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    urls.push(String(input));
+    const base = { id: "fixture", model: "fixture", created: 0 };
+    const body = JSON.parse(String(init?.body)) as { stream?: boolean };
+    if (body.stream === true) {
+      const chunk = { ...base, choices: [{ index: 0, delta: { content: "Ready" }, finish_reason: "stop" }] };
+      return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return Response.json({
+      ...base,
+      choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ sourceType: "page", diagram: false }) }, finish_reason: "stop" }],
+    });
+  });
+  const gateway = createWorkerGateway(chat, chat);
+  const signal = new AbortController().signal;
+  const chunks = [];
+  for await (const chunk of gateway.stream(request, signal)) chunks.push(chunk);
+  assert.deepEqual(chunks, ["Ready"]);
+  assert.deepEqual(await gateway.decide(request, decisionSchemas.route, signal), { sourceType: "page", diagram: false });
+  assert.deepEqual(urls, [chat.chatEndpoint, chat.chatEndpoint]);
+});
+
+void test("the worker sends native classification to FreeLLM and uses chat for generated decisions", async (t) => {
+  const system = { ...profile, id: "clef", provider: "freellm-decisions" as const, model: "auto", endpoint: "https://decision.test/v1/decisions", key: "decision-key", customHeaders: [] };
+  connectWorker(t, [profile, system]);
+  const requests: { url: string; auth: string | null; redirect?: RequestRedirect; body: Record<string, unknown> }[] = [];
+  t.mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    requests.push({ url: String(input), auth: new Headers(init?.headers).get("authorization"), redirect: init?.redirect, body });
+    if (requests.length === 1)
+      return Response.json({ answers: { sourceType: { type: "choice", choice: "paper" }, diagram: { type: "noul", noul: 0.8 } } });
+    return Response.json({
+      id: "fixture",
+      model: "fixture",
+      created: 0,
+      choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ questions: ["Why does this work?"] }) }, finish_reason: "stop" }],
+    });
+  });
+  const gateway = createWorkerGateway(profile, system);
+  const signal = new AbortController().signal;
+  assert.deepEqual(await gateway.decide(request, decisionSchemas.route, signal), { sourceType: "paper", diagram: true });
+  assert.deepEqual(await gateway.decide(request, decisionSchemas.suggestions, signal), { questions: ["Why does this work?"] });
+  assert.deepEqual(requests.map(({ url, auth, redirect }) => [url, auth, redirect]), [
+    [system.endpoint, "Bearer decision-key", "error"],
+    [`${profile.endpoint}/chat/completions`, null, "error"],
+  ]);
+  assert.equal(requests[0]?.body.state, request.prompt);
+  assert.equal(requests[0]?.body.model, "auto");
+  assert.deepEqual(Object.keys(requests[0]?.body.questions as object), ["sourceType", "diagram"]);
+  assert.equal("messages" in requests[0].body, false);
+});
+
+void test("a stale reader cannot send to a changed exact chat URL", async (t) => {
+  const chat = { ...profile, chatEndpoint: "https://example.test/previous" };
+  connectWorker(t, [{ ...chat, chatEndpoint: "https://example.test/replacement" }]);
+  const fetch = t.mock.method(globalThis, "fetch", () => assert.fail("A stale profile must not fetch"));
+  const iterator = createWorkerGateway(chat, chat).stream(request, new AbortController().signal)[Symbol.asyncIterator]();
   await assert.rejects(iterator.next(), ModelProfileChangedError);
   assert.equal(fetch.mock.callCount(), 0);
 });

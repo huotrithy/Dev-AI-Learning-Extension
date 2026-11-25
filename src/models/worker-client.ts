@@ -1,6 +1,6 @@
 import { decisionSchemas } from "./decision-schemas.ts";
 import type { ModelGateway } from "./gateway.ts";
-import { InsecureModelEndpointError } from "./profiles.ts";
+import { decisionProvider, InsecureModelEndpointError } from "./profiles.ts";
 import {
   modelPortName,
   modelSettingsChannel,
@@ -108,7 +108,7 @@ async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncG
 }
 
 export function createWorkerGateway(main: ModelCommand["profile"], system: ModelCommand["profile"]): ModelGateway {
-  const binding = ({ id, provider, endpoint, model }: ModelCommand["profile"]) => ({ id, provider, endpoint, model });
+  const binding = ({ id, provider, endpoint, chatEndpoint, model }: ModelCommand["profile"]) => ({ id, provider, endpoint, chatEndpoint, model });
   const mainProfile = binding(main);
   const systemProfile = binding(system);
   return {
@@ -123,7 +123,8 @@ export function createWorkerGateway(main: ModelCommand["profile"], system: Model
       const decision = names.find(name => decisionSchemas[name] === schema);
       if (!decision)
         throw new Error("Unknown model decision schema.");
-      for await (const reply of requestModel({ profile: systemProfile, request, decision }, signal)) {
+      const profile = systemProfile.provider === decisionProvider && decision !== "route" ? mainProfile : systemProfile;
+      for await (const reply of requestModel({ profile, request, decision }, signal)) {
         if (reply.type === "done")
           return reply.decision;
       }

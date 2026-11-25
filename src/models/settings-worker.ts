@@ -1,4 +1,5 @@
 import {
+  decisionProvider,
   hostPermission,
   modelEndpoint,
   modelHeaders,
@@ -18,13 +19,14 @@ export function publicModelSettings(settings: ModelSettings): PublicModelSetting
     main: settings.main,
     system: settings.system,
     profiles: settings.profiles.map((profile) => {
-      const { id, label, provider, model, endpoint, key, customHeaders, toolCalls, disableThinking } = profile;
+      const { id, label, provider, model, endpoint, chatEndpoint, key, customHeaders, toolCalls, disableThinking } = profile;
       return {
         id,
         label,
         provider,
         model,
         endpoint,
+        ...(chatEndpoint ? { chatEndpoint } : {}),
         toolCalls,
         disableThinking,
         revision: profileRevision(profile),
@@ -38,8 +40,11 @@ export function publicModelSettings(settings: ModelSettings): PublicModelSetting
 export function applyModelSettingsCommand(settings: ModelSettings, command: Exclude<SettingsCommand, { type: "load-settings" }>): ModelSettings {
   const { profiles, main, system } = settings;
   if (command.type === "assign-profile") {
-    if (!profiles.some(({ id }) => id === command.id))
+    const profile = profiles.find(({ id }) => id === command.id);
+    if (!profile)
       throw new Error("This profile is no longer available.");
+    if (command.role === "main" && profile.provider === decisionProvider)
+      throw new Error("Select a chat profile for the explanation model.");
     return { ...settings, [command.role]: command.id };
   }
   if (command.type === "remove-profile") {
@@ -47,19 +52,23 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
     if (!removed || profileRevision(removed) !== command.revision)
       throw new Error("This profile changed. Reopen the reader and try again.");
     const remaining = profiles.filter(({ id }) => id !== command.id);
-    const fallback = remaining[0]?.id ?? "";
-    return { profiles: remaining, main: main === command.id ? fallback : main, system: system === command.id ? fallback : system };
+    const fallback = remaining.find(({ provider }) => provider !== decisionProvider)?.id ?? "";
+    return { profiles: remaining, main: main === command.id ? fallback : main, system: system === command.id ? fallback || remaining[0]?.id || "" : system };
   }
 
-  const { id, label, provider, model, endpoint, toolCalls, disableThinking, key, customHeaders, revision } = command.profile;
+  const { id, label, provider, model, endpoint, chatEndpoint, toolCalls, disableThinking, key, customHeaders, revision } = command.profile;
   const existing = profiles.find(item => item.id === id);
   if ((existing ? profileRevision(existing) : undefined) !== revision)
     throw new Error("This profile changed. Reopen the reader and try again.");
   const profile: ModelProfile = { id, label, provider, model, endpoint, toolCalls, disableThinking, key: "", revision: crypto.randomUUID() };
+  if (provider === "compatible" && chatEndpoint)
+    profile.chatEndpoint = chatEndpoint;
+  if (profile.chatEndpoint && endpoint)
+    modelEndpoint({ ...profile, chatEndpoint: undefined });
   const destination = modelEndpoint(profile).href;
   let previous: ModelProfile | undefined;
   try {
-    if (existing?.provider === provider && modelEndpoint(existing).href === destination)
+    if (existing?.provider === provider && Boolean(existing.chatEndpoint) === Boolean(profile.chatEndpoint) && modelEndpoint(existing).href === destination)
       previous = existing;
   }
   catch { /* Invalid older endpoints cannot retain credentials. */ }
@@ -75,13 +84,16 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
   });
   if (!profile.label || !profile.model)
     throw new Error("Enter a profile name and a model ID.");
-  if (provider !== "compatible" && !profile.key && !previous)
+  if ((provider === "openai" || provider === "anthropic") && !profile.key && !previous)
     throw new Error("Enter an API key for this provider.");
   modelRequestEndpoint(profile);
   modelHeaders(profile);
+  const updated = existing ? profiles.map(item => item.id === id ? profile : item) : [...profiles, profile];
+  const explanation = updated.find(item => item.id === main && item.provider !== decisionProvider)
+    ?? updated.find(item => item.provider !== decisionProvider);
   return {
-    profiles: existing ? profiles.map(item => item.id === id ? profile : item) : [...profiles, profile],
-    main: main || id,
+    profiles: updated,
+    main: explanation?.id ?? "",
     system: system || id,
   };
 }
@@ -103,7 +115,7 @@ export function handleModelSettings(message: unknown): Promise<SettingsReply> {
       next = applyModelSettingsCommand(current, command);
     }
     catch (error) {
-      return { error: error instanceof TypeError ? "Enter a valid model base URL." : (error as Error).message };
+      return { error: error instanceof TypeError ? "Enter a valid model URL." : (error as Error).message };
     }
     if (command.type === "save-profile") {
       const profile = next.profiles.find(({ id }) => id === command.profile.id)!;

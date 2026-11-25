@@ -1,5 +1,6 @@
 import type { ModelGateway } from "../models/gateway.ts";
 import type { RepositoryFile } from "../page/github.ts";
+import { decisionSchemas } from "../models/decision-schemas.ts";
 
 export type ActivityStatus
   = | "running"
@@ -56,7 +57,7 @@ export function createActivity(
 export function trackModelActivity(
   gateway: ModelGateway,
   activity: ReturnType<typeof createActivity>,
-  models: { main: string; system: string },
+  models: { main: string; system: string; classificationOnly?: boolean },
 ): ModelGateway {
   return {
     async* stream(request, signal) {
@@ -79,7 +80,7 @@ export function trackModelActivity(
     async decide(request, schema, signal) {
       const finish = activity.start(
         request.activity ?? "Make a routing decision",
-        models.system,
+        models.classificationOnly && schema !== decisionSchemas.route ? models.main : models.system,
       );
       try {
         const decision = await gateway.decide(request, schema, signal);
