@@ -18,6 +18,59 @@ test("streams the introduction while classification is pending", async () => {
   await events.return();
 });
 
+test("page learning compiles a supported graph and removes Mermaid syntax from its labels", async () => {
+  const events = [];
+  const calls: (string | undefined)[] = [];
+  for await (const event of streamLearning(
+    { title: "Queues", url: "https://example.test/", text: "A queue delivers jobs\n to a worker." },
+    "new", "", {
+      stream: async function* (request) {
+        assert.doesNotMatch(request.prompt, /Return only Mermaid syntax/);
+        yield "Queue explanation.";
+      },
+      decide: async (request) => {
+        calls.push(request.activity);
+        if (calls.length === 1)
+          return { sourceType: "page", diagram: true };
+        assert.match(request.prompt, /A queue delivers jobs/);
+        return {
+          nodes: ["Queue", 'Worker\nclick n0 "https://example.test/"'],
+          connections: [{ from: 0, to: 1, label: "delivers jobs", evidence: "A queue delivers jobs to a worker." }],
+        };
+      },
+    }, new AbortController().signal,
+  )) events.push(event);
+  assert.deepEqual(calls, ["Classify the source", "Extract diagram relationships"]);
+  const diagram = events.find(event => event.section === "diagram");
+  assert.ok(diagram && "text" in diagram);
+  assert.match(diagram.text, /^flowchart TD\n/);
+  assert.match(diagram.text, /n0 -->\|delivers jobs\| n1/);
+  assert.doesNotMatch(diagram.text, /click |https:\/\//);
+});
+
+test("an unsupported page diagram gets one retry and leaves the walkthrough visible", async () => {
+  let attempts = 0;
+  const events = [];
+  for await (const event of streamLearning(
+    { title: "Queues", url: "https://example.test/", text: "A queue delivers jobs to a worker." },
+    "new", "", {
+      stream: async function* () { yield "Queue explanation."; },
+      decide: async (request) => {
+        if (request.activity === "Classify the source")
+          return { sourceType: "page", diagram: true };
+        attempts++;
+        return {
+          nodes: ["Queue", "Worker"],
+          connections: [{ from: 0, to: attempts === 1 ? 1 : 5, label: "delivers jobs", evidence: attempts === 1 ? "A queue sends email." : "A queue delivers jobs to a worker." }],
+        };
+      },
+    }, new AbortController().signal,
+  )) events.push(event);
+  assert.equal(attempts, 2);
+  assert.ok(events.some(event => event.section === "steps"));
+  assert.ok(events.every(event => event.section !== "diagram"));
+});
+
 test("a new request invalidates updates and aborts network work from the old page", () => {
   const gate = new LatestRequest();
   const previous = gate.start();

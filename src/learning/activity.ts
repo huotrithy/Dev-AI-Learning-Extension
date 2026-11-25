@@ -80,7 +80,9 @@ export function trackModelActivity(
     async decide(request, schema, signal) {
       const finish = activity.start(
         request.activity ?? "Make a routing decision",
-        models.classificationOnly && schema !== decisionSchemas.route ? models.main : models.system,
+        schema === decisionSchemas.diagram || (models.classificationOnly && schema !== decisionSchemas.route)
+          ? models.main
+          : models.system,
       );
       try {
         const decision = await gateway.decide(request, schema, signal);

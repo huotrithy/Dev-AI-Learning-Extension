@@ -123,7 +123,9 @@ export function createWorkerGateway(main: ModelCommand["profile"], system: Model
       const decision = names.find(name => decisionSchemas[name] === schema);
       if (!decision)
         throw new Error("Unknown model decision schema.");
-      const profile = systemProfile.provider === decisionProvider && decision !== "route" ? mainProfile : systemProfile;
+      const profile = decision === "diagram" || (systemProfile.provider === decisionProvider && decision !== "route")
+        ? mainProfile
+        : systemProfile;
       for await (const reply of requestModel({ profile, request, decision }, signal)) {
         if (reply.type === "done")
           return reply.decision;

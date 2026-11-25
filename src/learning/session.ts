@@ -7,6 +7,7 @@ import type { ActivityStep } from "./activity.ts";
 import { readArchitecture, type RepositoryArchitecture } from "./architecture.ts";
 import { learningLimits, type Depth, type Section } from "./config.ts";
 import { pageContext } from "./context.ts";
+import { readPageDiagram } from "./page-diagram.ts";
 import { answerPrompt, classificationInstructions, explanationPrompt, introductionPrompt, sectionPrompt } from "./prompts.ts";
 
 export type LearningEvent
@@ -23,13 +24,12 @@ export interface ChatTurn {
 
 const routeSchema = decisionSchemas.route;
 
-const sectionActivities: Record<Exclude<Section, "intro">, string> = {
+const sectionActivities = {
   moments: "Find key moments",
   reading: "Suggest a reading path",
   example: "Write the example",
   uses: "Describe use cases",
   steps: "Write the walkthrough",
-  diagram: "Generate Mermaid source",
 };
 
 export class LatestRequest {
@@ -106,12 +106,9 @@ export async function* streamLearning(
   }
   const classification = routeSchema.safeParse(await route);
   const sourceType = page.repository ? "repo" : page.docs ? "docs" : classification.data?.sourceType ?? "page";
-  const order: Exclude<Section, "intro">[] = ["example", "uses", "steps"];
+  const order: (keyof typeof sectionActivities)[] = ["example", "uses", "steps"];
   if (page.docs?.length)
     order.unshift("reading");
-  if (classification.data?.diagram)
-    order.push("diagram");
-
   for (const section of order) {
     signal.throwIfAborted();
     for await (const text of gateway.stream({
@@ -120,6 +117,11 @@ export async function* streamLearning(
       maxOutputTokens: section === "steps" ? learningLimits.outputTokens.detailed : learningLimits.outputTokens.section,
       activity: sectionActivities[section],
     }, signal)) yield { section, text };
+  }
+  if (classification.data?.diagram) {
+    const text = await readPageDiagram(page, gateway, signal);
+    if (text)
+      yield { section: "diagram", text };
   }
 }
 
