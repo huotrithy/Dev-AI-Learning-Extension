@@ -13,7 +13,7 @@ import { InsecureModelEndpointError, type PublicModelSettings as ModelSettings }
 import { createWorkerGateway, ModelProfileChangedError } from "../../src/models/worker-client.ts";
 import type { ModelGateway } from "../../src/models/gateway.ts";
 import { readTab, readYouTube } from "../../src/page/active-tab.ts";
-import { docsReferences, loadDocs } from "../../src/page/docs.ts";
+import { docsReferences, loadDocs, searchDocs } from "../../src/page/docs.ts";
 import type { PageSource } from "../../src/page/extract.ts";
 import { githubApiPermission, githubRepository, loadRepository, repositoryHome, RepositoryReadError, traceRepository } from "../../src/page/github.ts";
 import { youtubeVideo } from "../../src/page/youtube.ts";
@@ -259,10 +259,10 @@ export async function learn(settings: ModelSettings): Promise<void> {
       const granted = await chrome.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] }).catch(() => false);
       controller.signal.throwIfAborted();
       if (granted) {
-        const docs = await loadDocs(page, controller.signal, new DOMParser());
+        const collection = await loadDocs(page, controller.signal, new DOMParser());
         if (!request.isCurrent(controller))
           return;
-        page = { ...page, docs };
+        page = { ...page, ...collection };
         set({ page, chat: [] });
       }
       else {
@@ -270,7 +270,7 @@ export async function learn(settings: ModelSettings): Promise<void> {
       }
     }
     else if (!includeRelatedDocs && page.docs) {
-      page = { ...page, docs: undefined };
+      page = { ...page, docs: undefined, docsIndex: undefined };
       set({ page, chat: [] });
     }
     const references = docsReferences(page);
@@ -368,13 +368,14 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
     const { gateway, models } = selectedGateway(settings);
     const { status, context } = await readMemory(scope);
     controller.signal.throwIfAborted();
-    const finishSource = activity.start(page.repository ? "Look for relevant repository files" : page.docs ? "Use the loaded documentation" : "Use the loaded page text");
-    const source = await traceRepository(page, question, controller.signal).catch((error: unknown) => {
+    const finishSource = activity.start(page.repository ? "Look for relevant repository files" : page.docs ? "Search the loaded documentation" : "Use the loaded page text");
+    const source = page.docs ? searchDocs(page, question) : await traceRepository(page, question, controller.signal).catch((error: unknown) => {
       controller.signal.throwIfAborted();
       const detail = error instanceof RepositoryReadError ? `${error.message} ` : "";
       turn.repositoryNotice = `${detail}This answer uses the repository excerpts already loaded.`;
       return page;
     });
+    turn.docsReferences = docsReferences(source);
     turn.repositoryFiles = source.repository?.files.map(({ path, url }) => ({ path, url }));
     if (!request.isCurrent(controller))
       return;
@@ -385,7 +386,9 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
           detail: focusedFiles?.length ? "Read focused excerpts" : "Used the loaded excerpts",
           files: focusedFiles,
         }
-      : { detail: page.docs ? "Selected excerpts from the loaded pages" : new URL(page.url).hostname });
+      : turn.docsReferences
+        ? { files: turn.docsReferences.map(({ title, url }) => ({ path: title, url })) }
+        : { detail: new URL(page.url).hostname });
     const scopedGateway = protectRecall(trackModelActivity(gateway, activity, models), context.prompt ? status?.revision : undefined);
     for await (const chunk of streamAnswer(source, question, chat, depth, context.prompt, scopedGateway, controller.signal, sections)) {
       if (!request.isCurrent(controller))

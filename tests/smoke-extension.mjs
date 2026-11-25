@@ -18,10 +18,15 @@ const server = createServer(async (request, response) => {
   if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
 
   if (request.url !== "/v1/chat/completions") {
-    const title = request.url === "/second" ? "Queue acknowledgments" : "Reliable work queues";
+    const title = request.url === "/third" ? "Queue rate limits" : request.url === "/second" ? "Queue acknowledgments" : "Reliable work queues";
     response.writeHead(200, { "content-type": "text/html" });
-    const related = request.url === "/first" ? "<a rel=\"next\" href=\"/second\">Read about acknowledgments</a>" : "";
-    response.end(`<title>${title}</title><article><h1>${title}</h1><p>Jobs are acknowledged after processing. A broker can redeliver jobs a worker does not acknowledge.</p>${related}</article>`);
+    const related = request.url === "/first"
+      ? '<a rel="next" href="/second">Read about acknowledgments</a>'
+      : request.url === "/second" ? '<a rel="next" href="/third">Read about rate limits</a>' : "";
+    const text = request.url === "/third"
+      ? "Throttle job processing by configuring max_concurrency for each worker."
+      : "Jobs are acknowledged after processing. A broker can redeliver jobs a worker does not acknowledge.";
+    response.end(`<title>${title}</title><article><h1>${title}</h1><p>${text}</p>${related}</article>`);
     return;
   }
 
@@ -50,7 +55,9 @@ const server = createServer(async (request, response) => {
     ? "flowchart LR\nA[Broker] --> B[Worker]"
     : system.includes("The repository tree is a sample")
       ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
-      : "Acknowledgments let a broker track whether a job finished.";
+      : prompt.includes("Question: How do I set max_concurrency?")
+        ? `Set the [worker concurrency limit](http://127.0.0.1:${server.address().port}/third).`
+        : "Acknowledgments let a broker track whether a job finished.";
   response.writeHead(200, { "content-type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`);
   response.end(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
@@ -235,6 +242,16 @@ try {
   await waitFor("Explain again");
   assert.deepEqual(await evaluate("window.docsPermissionsRequested"), ["http://127.0.0.1/*"]);
   assert.ok(prompts.some(({ system, prompt }) => system.includes("The first page is where the reader started") && prompt.includes(`${origin}/second`)));
+  assert.ok(prompts.every(({ prompt }) => !prompt.includes(`${origin}/third`)), "The overview stays on directly linked docs");
+  await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'How do I set max_concurrency?');
+    question.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await click("Send question");
+  await waitForAnswer("How do I set max_concurrency?", "Set the worker concurrency limit.");
+  assert.ok(prompts.some(({ prompt }) => prompt.includes("Question: How do I set max_concurrency?") && prompt.includes(`${origin}/third`)));
+  assert.equal(await evaluate("document.querySelector('.chat-turn a')?.getAttribute('href')"), `${origin}/third`);
   await evaluate("chrome.permissions.request = window.originalPermissionsRequest");
   await evaluate(`${docsCheckbox}.click()`);
   await waitFor("Select Explain again to apply the new scope.");

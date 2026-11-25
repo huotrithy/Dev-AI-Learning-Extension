@@ -66,7 +66,7 @@ The **Repository architecture** map shows how the components identified in the e
 
 ## Learn a documentation site
 
-Open a documentation page, check **Include related docs**, and choose **Learn this page**. Allow access to that site when prompted. The reader uses the current page and up to four linked pages on the same origin to generate a suggested reading path and answer follow-up questions with citations. Expand **Documentation pages read** to see the sources. Linked pages must serve readable HTML directly and are fetched without browser cookies. To return to a single page, uncheck **Include related docs** and choose **Explain again**.
+Open a documentation page, check **Include related docs**, and choose **Learn this page**. Allow access to that site when prompted. The overview uses the current page and up to four directly linked pages on the same origin. For follow-up questions, the reader searches those pages and up to eight more from the same documentation section, fetched one link farther out. The search collection lives in the reader session. Expand **Documentation pages read** for overview sources or the answer's **Activity** for the pages selected for that question. Linked pages must serve readable HTML directly and are fetched without browser cookies. To return to a single page, uncheck **Include related docs** and choose **Explain again**.
 
 ## Learn a YouTube video
 

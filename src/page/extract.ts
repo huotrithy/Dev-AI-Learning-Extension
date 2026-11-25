@@ -10,6 +10,7 @@ export interface PageSource {
   repository?: RepositorySource;
   relatedLinks?: string[];
   docs?: DocsPage[];
+  docsIndex?: DocsPage[];
   video?: VideoTranscript;
 }
 

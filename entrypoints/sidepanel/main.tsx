@@ -602,7 +602,7 @@ function App() {
                 </Fragment>
               );
             })}
-            {reader.chat.map(({ question, answer, repositoryFiles, repositoryNotice, activity }, index) => (
+            {reader.chat.map(({ question, answer, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
               <section className="chat-turn" key={index}>
                 <h2>{question}</h2>
                 <ReaderActivity steps={activity} />
@@ -610,7 +610,7 @@ function App() {
                   ? (
                       <Prose
                         text={answer}
-                        sources={video?.excerpts ?? docs ?? repositoryFiles ?? repository?.files}
+                        sources={video?.excerpts ?? answerDocs ?? docs ?? repositoryFiles ?? repository?.files}
                         onSourceClick={video ? jumpToTimestamp : undefined}
                       />
                     )
