@@ -35,6 +35,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit dependencies (advisory)
+        id: dependency-audit
+        continue-on-error: true
+        run: pnpm audit --audit-level high
+
+      - name: Report dependency audit failure
+        if: steps.dependency-audit.outcome == 'failure'
+        run: echo "::warning::Dependency audit reported high or critical vulnerabilities or could not complete. See the audit step for details."
+
       - name: Lint (advisory)
         id: lint
         # Remove this once the existing ESLint violations are fixed.
