@@ -37,7 +37,8 @@ export async function readArchitecture(
     .catch(() => undefined);
   signal.throwIfAborted();
   const parsed = architectureSchema.safeParse(decision);
-  if (!parsed.success) return null;
+  if (!parsed.success)
+    return null;
 
   const sourceFiles = new Map(
     page.repository.files.map(({ path, url }) => [path, { path, url }]),
@@ -51,7 +52,8 @@ export async function readArchitecture(
       ? [{ id, name: name.trim(), files: sources }]
       : [];
   });
-  if (!components.length) return null;
+  if (!components.length)
+    return null;
 
   const ids = new Set(components.map(({ id }) => id));
   const connections = parsed.data.connections.filter(

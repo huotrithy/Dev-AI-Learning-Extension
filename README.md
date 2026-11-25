@@ -29,14 +29,14 @@ An open chat or unsent draft stays with its original page when you switch tabs o
 2. Open the FreeLLMAPI dashboard, add at least one upstream provider key under **Keys**, and copy the **unified API key**. The desktop app also offers **Copy Key** in its tray menu.
 3. In the extension, open **Settings** → **Model settings** and create a profile with these values.
 
-   | Field | Value |
-   | --- | --- |
-   | Profile name | `FreeLLMAPI` |
-   | Provider | **OpenAI-compatible (local or hosted)** |
-   | Base URL | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
-   | Model ID | `auto` to use the gateway's fallback chain |
-   | API key | The unified API key from FreeLLMAPI |
-   | Custom headers and advanced model options | Leave headers blank and both toggles off to start |
+   | Field                                     | Value                                                                                                                                                                                                    |
+   | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Profile name                              | `FreeLLMAPI`                                                                                                                                                                                             |
+   | Provider                                  | **OpenAI-compatible (local or hosted)**                                                                                                                                                                  |
+   | Base URL                                  | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
+   | Model ID                                  | `auto` to use the gateway's fallback chain                                                                                                                                                               |
+   | API key                                   | The unified API key from FreeLLMAPI                                                                                                                                                                      |
+   | Custom headers and advanced model options | Leave headers blank and both toggles off to start                                                                                                                                                        |
 
 4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it. You can also select the profile for **System 1** and test a fresh reading session.
 

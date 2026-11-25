@@ -1,12 +1,12 @@
 import type { ModelGateway } from "../models/gateway.ts";
 import type { RepositoryFile } from "../page/github.ts";
 
-export type ActivityStatus =
-  | "running"
-  | "done"
-  | "stopped"
-  | "error"
-  | "fallback";
+export type ActivityStatus
+  = | "running"
+    | "done"
+    | "stopped"
+    | "error"
+    | "fallback";
 export interface ActivityStep {
   label: string;
   detail?: string;
@@ -22,8 +22,9 @@ export function createActivity(
   signal.addEventListener(
     "abort",
     () => {
-      if (!steps.some(({ status }) => status === "running")) return;
-      steps = steps.map((step) =>
+      if (!steps.some(({ status }) => status === "running"))
+        return;
+      steps = steps.map(step =>
         step.status === "running" ? { ...step, status: "stopped" } : step,
       );
       update(steps);
@@ -41,7 +42,8 @@ export function createActivity(
         status: Exclude<ActivityStatus, "running"> = "done",
         result?: Pick<ActivityStep, "detail" | "files">,
       ) => {
-        if (steps[index]?.status !== "running") return;
+        if (steps[index]?.status !== "running")
+          return;
         steps = steps.map((step, current) =>
           current === index ? { ...step, ...result, status } : step,
         );
@@ -57,7 +59,7 @@ export function trackModelActivity(
   models: { main: string; system: string },
 ): ModelGateway {
   return {
-    async *stream(request, signal) {
+    async* stream(request, signal) {
       const finish = activity.start(
         request.activity ?? "Generate response",
         models.main,
@@ -65,10 +67,12 @@ export function trackModelActivity(
       try {
         yield* gateway.stream(request, signal);
         finish();
-      } catch (error) {
+      }
+      catch (error) {
         finish(signal.aborted ? "stopped" : "error");
         throw error;
-      } finally {
+      }
+      finally {
         finish("stopped");
       }
     },
@@ -81,7 +85,8 @@ export function trackModelActivity(
         const decision = await gateway.decide(request, schema, signal);
         finish(decision === undefined ? "fallback" : "done");
         return decision;
-      } catch (error) {
+      }
+      catch (error) {
         finish(signal.aborted ? "stopped" : "error");
         throw error;
       }

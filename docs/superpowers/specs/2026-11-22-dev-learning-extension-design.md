@@ -16,8 +16,8 @@ whatever technical thing the developer is looking at, in a layered "explain it
 like I'm new to this" format, then lets them dig deeper through chat, web
 research, and diagrams.
 
-**Audience:** technical developers. "Like I'm five" means *new to this concept*,
-not *new to programming* — examples use real code, real libraries, real files.
+**Audience:** technical developers. "Like I'm five" means _new to this concept_,
+not _new to programming_ — examples use real code, real libraries, real files.
 
 **Distribution:** v1 is an unpacked Chrome extension for the owner to use
 locally. A public Chrome Web Store release is planned for later. Before that
@@ -139,13 +139,13 @@ acceptance criterion on local hardware.
 
 ### 6.2 Modes by source type
 
-| Mode | Input | Distinctive behavior |
-|---|---|---|
-| Page | Any article/blog/docs page | Extract main content, learning view + chat |
-| Paper | arXiv abs/HTML/PDF | Walkthrough = problem → method → results → limits |
-| Repo | github.com/{owner}/{repo} | Fetch tree + key files via GitHub API; architecture diagram linked to files; "how does X work" traces through code |
-| Docs site | Any docs domain | Crawl & map the site; "how do I X?" answered from relevant pages with links; suggested reading path |
-| Research | Any question | Plans sub-questions, web-searches, reads sources, cited answer |
+| Mode      | Input                      | Distinctive behavior                                                                                               |
+| --------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Page      | Any article/blog/docs page | Extract main content, learning view + chat                                                                         |
+| Paper     | arXiv abs/HTML/PDF         | Walkthrough = problem → method → results → limits                                                                  |
+| Repo      | github.com/{owner}/{repo}  | Fetch tree + key files via GitHub API; architecture diagram linked to files; "how does X work" traces through code |
+| Docs site | Any docs domain            | Crawl & map the site; "how do I X?" answered from relevant pages with links; suggested reading path                |
+| Research  | Any question               | Plans sub-questions, web-searches, reads sources, cited answer                                                     |
 
 ### 6.3 Personal learning memory
 
@@ -208,8 +208,8 @@ flowchart LR
   - Chrome side panel wiring
   - model/provider settings UI and OpenAI-compatible/Ollama/LM Studio quirks
   - Dexie storage setup
-  Not taken: Ant Design UI, LangChain model layer, Page Assist's chat-centric
-  app structure.
+    Not taken: Ant Design UI, LangChain model layer, Page Assist's chat-centric
+    app structure.
 - **Provider layer:** Vercel AI SDK with providers: OpenAI-compatible (any
   base URL), OpenAI, Anthropic. Users configure one or more model profiles
   and assign them to roles (below).
@@ -218,11 +218,11 @@ flowchart LR
 
 ### 7.2 Model roles
 
-| Role | Job | Local default | Upgrades |
-|---|---|---|---|
-| **System 1** | Fast typed decisions: classify page type, route question (quick vs research vs needs-repo-trace), pick relevant chunks/pages, extract metadata | Qwen 4B, thinking off, forced tool calls or validated prompt JSON (see §5) | A dedicated System 1 model (e.g. TypeSafe Jev or similar) via the user's key |
-| **Main** | Writes explanations, walkthroughs, diagrams, answers | Qwen 4B | Any stronger BYO model |
-| **Embeddings** (optional) | Semantic search over repos/docs | none → BM25 keyword fallback | OpenAI embeddings or a locally served embedding model |
+| Role                      | Job                                                                                                                                            | Local default                                                              | Upgrades                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **System 1**              | Fast typed decisions: classify page type, route question (quick vs research vs needs-repo-trace), pick relevant chunks/pages, extract metadata | Qwen 4B, thinking off, forced tool calls or validated prompt JSON (see §5) | A dedicated System 1 model (e.g. TypeSafe Jev or similar) via the user's key |
+| **Main**                  | Writes explanations, walkthroughs, diagrams, answers                                                                                           | Qwen 4B                                                                    | Any stronger BYO model                                                       |
+| **Embeddings** (optional) | Semantic search over repos/docs                                                                                                                | none → BM25 keyword fallback                                               | OpenAI embeddings or a locally served embedding model                        |
 
 Dedicated System 1 models (e.g. Jev) are not chat models and may expose a
 non-OpenAI API; they plug in through a separate **System 1 adapter** behind
@@ -247,7 +247,7 @@ page").
     user-added MCP servers).
   - pgvector storage for repo/doc indexes (shareable across a team pointing
     at the same server).
-- **Never hosts or proxies a model of its own.** It calls the *user's* model
+- **Never hosts or proxies a model of its own.** It calls the _user's_ model
   endpoints.
 - **Key transparency:** to run jobs, the server needs the user's model key.
   Keys are sent to the server only when the user turns on server mode; the
@@ -285,12 +285,12 @@ require a separate decision about what session and preference data can be sent.
 
 ## 8. Approaches considered
 
-| Approach | Trade-off | Decision |
-|---|---|---|
-| A. Fork Page Assist wholesale | Fast day one; inherits Ant Design, LangChain layer, chat-centric structure that fights learning view/repo/docs modes | Rejected |
-| B. Fresh build, browser-only | Clean, zero install; long jobs limited by MV3 lifetimes | Base of chosen design |
-| C. Thin extension + required server | Most powerful; forces every user to run a server | Rejected as *required* |
-| **Chosen: B + harvested Page Assist modules + optional Mastra companion server** | Clean ownership, reuse of solved plumbing, server only for heavy work | **Picked by owner** |
+| Approach                                                                         | Trade-off                                                                                                            | Decision               |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| A. Fork Page Assist wholesale                                                    | Fast day one; inherits Ant Design, LangChain layer, chat-centric structure that fights learning view/repo/docs modes | Rejected               |
+| B. Fresh build, browser-only                                                     | Clean, zero install; long jobs limited by MV3 lifetimes                                                              | Base of chosen design  |
+| C. Thin extension + required server                                              | Most powerful; forces every user to run a server                                                                     | Rejected as _required_ |
+| **Chosen: B + harvested Page Assist modules + optional Mastra companion server** | Clean ownership, reuse of solved plumbing, server only for heavy work                                                | **Picked by owner**    |
 
 Model-layer options considered: LangChain.js/LangGraph.js (powerful, heavy,
 abstracts provider settings we need direct control over), no framework (max

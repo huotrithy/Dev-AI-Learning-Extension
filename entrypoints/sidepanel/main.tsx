@@ -68,22 +68,33 @@ function Prose({ text, sources, onSourceClick }: {
       <Markdown
         skipHtml
         components={{
-          a: ({ children, href }) => href && sources?.some((source) => source.url === href)
-            ? <a className="underline underline-offset-2" href={href} target="_blank" rel="noreferrer"
-                onClick={onSourceClick && ((event) => {
-                  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  onSourceClick(href);
-                })}>{children}</a>
+          a: ({ children, href }) => href && sources?.some(source => source.url === href)
+            ? (
+                <a
+                  className="underline underline-offset-2"
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={onSourceClick && ((event) => {
+                    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+                      return;
+                    event.preventDefault();
+                    onSourceClick(href);
+                  })}
+                >
+                  {children}
+                </a>
+              )
             : <span>{children}</span>,
           img: () => null,
           pre: ({ node, children }) => {
             const code = node?.children[0];
-            if (code?.type !== "element" || code.tagName !== "code") return <pre>{children}</pre>;
-            const value = code.children.map((child) => child.type === "text" ? child.value : "").join("");
+            if (code?.type !== "element" || code.tagName !== "code")
+              return <pre>{children}</pre>;
+            const value = code.children.map(child => child.type === "text" ? child.value : "").join("");
             const classes = code.properties.className;
             const language = Array.isArray(classes)
-              ? classes.find((value) => typeof value === "string" && value.startsWith(fencedLanguagePrefix))
+              ? classes.find(value => typeof value === "string" && value.startsWith(fencedLanguagePrefix))
               : undefined;
             return <CodeSnippet code={value} language={typeof language === "string" ? language.slice(fencedLanguagePrefix.length) : ""} />;
           },
@@ -114,7 +125,8 @@ function App() {
   const profile = settings?.profiles.find(({ id }) => id === settings.main);
   const system = settings?.profiles.find(({ id }) => id === settings.system);
   const pendingDocsScope = hasPendingDocsScope(reader);
-  const learnLabel = reader.sections.intro ? "Explain again"
+  const learnLabel = reader.sections.intro
+    ? "Explain again"
     : youtube ? "Learn this video" : repo ? "Learn this repo" : "Learn this page";
 
   const loadActivePage = useCallback((windowId: number, restore?: ReaderSnapshot) => {
@@ -126,12 +138,15 @@ function App() {
       const hostname = /^https?:$/.test(url.protocol) ? url.hostname : undefined;
       if (lastHostname.current && hostname !== lastHostname.current) {
         closeReader();
-        if (floating) window.close();
+        if (floating) {
+          window.close();
+        }
         else {
           const showCloseMessage = () => {
             setDisplayError("The site changed. Close this sidebar and reopen the reader on the new tab.");
           };
-          if (chrome.sidePanel.close) void chrome.sidePanel.close({ windowId }).catch(showCloseMessage);
+          if (chrome.sidePanel.close)
+            void chrome.sidePanel.close({ windowId }).catch(showCloseMessage);
           else showCloseMessage();
         }
         return false;
@@ -149,10 +164,11 @@ function App() {
         setConfigurationError("Could not open model settings.");
         setSettings(defaultSettings);
       });
-    if (!floating)
+    if (!floating) {
       void chrome.windows
         .getCurrent()
-        .then((window) => setSourceWindow(window.id));
+        .then(window => setSourceWindow(window.id));
+    }
   }, []);
 
   useEffect(() => {
@@ -163,7 +179,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (sourceWindow === undefined) return;
+    if (sourceWindow === undefined)
+      return;
     const unwatchMemory = watchMemoryChanges();
     const unwatchHandoff = watchHandoff(sourceWindow, (handoff) => {
       if (handoff) {
@@ -175,7 +192,8 @@ function App() {
     const activated: Parameters<
       typeof chrome.tabs.onActivated.addListener
     >[0] = (info) => {
-      if (sourceWindow !== info.windowId || hasActiveChat(useReader.getState())) return;
+      if (sourceWindow !== info.windowId || hasActiveChat(useReader.getState()))
+        return;
       loadActivePage(sourceWindow);
     };
     const updated: Parameters<typeof chrome.tabs.onUpdated.addListener>[0] = (
@@ -184,8 +202,10 @@ function App() {
     ) => {
       const reader = useReader.getState();
       const { tabId: readerTab, page } = reader;
-      if (tabId !== readerTab || hasActiveChat(reader)) return;
-      if (change.status === "loading") invalidateTab(tabId);
+      if (tabId !== readerTab || hasActiveChat(reader))
+        return;
+      if (change.status === "loading")
+        invalidateTab(tabId);
       else if (change.status === "complete" || (change.url && (!page || youtubeVideo(change.url)?.url !== page.url)))
         loadActivePage(sourceWindow);
     };
@@ -194,14 +214,16 @@ function App() {
     >[0] = (message) => {
       const { tabId, page } = useReader.getState();
       if (
-        message?.type === pageAccessGranted &&
-        message.tabId === tabId &&
-        !page
-      )
+        message?.type === pageAccessGranted
+        && message.tabId === tabId
+        && !page
+      ) {
         loadActivePage(sourceWindow);
+      }
     };
     const windowRemoved = (windowId: number) => {
-      if (sourceWindow === windowId) loadActivePage(sourceWindow);
+      if (sourceWindow === windowId)
+        loadActivePage(sourceWindow);
     };
     chrome.tabs.onActivated.addListener(activated);
     chrome.tabs.onUpdated.addListener(updated);
@@ -219,30 +241,34 @@ function App() {
   }, [sourceWindow, loadActivePage]);
 
   function refresh() {
-    if (sourceWindow === undefined) return;
+    if (sourceWindow === undefined)
+      return;
     lastHostname.current = undefined;
     loadActivePage(sourceWindow);
   }
 
   async function changeDisplay() {
     if (
-      sourceWindow === undefined ||
-      switchingWindow ||
-      reader.loading ||
-      reader.working
-    )
+      sourceWindow === undefined
+      || switchingWindow
+      || reader.loading
+      || reader.working
+    ) {
       return;
+    }
     setSwitchingWindow(true);
     setDisplayError("");
     try {
       setDisplayError(await switchReaderWindow(sourceWindow, view));
-    } catch {
+    }
+    catch {
       setDisplayError(
         floating
           ? "Could not dock the reader. Check that the original browser window is still open."
           : "Could not open a floating window. Try again.",
       );
-    } finally {
+    }
+    finally {
       setSwitchingWindow(false);
     }
   }
@@ -250,22 +276,24 @@ function App() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
-      !settings ||
-      !reader.page ||
-      (repo && !repository) ||
-      (youtube && !video) ||
-      !profile ||
-      reader.working ||
-      !question.trim()
-    )
+      !settings
+      || !reader.page
+      || (repo && !repository)
+      || (youtube && !video)
+      || !profile
+      || reader.working
+      || !question.trim()
+    ) {
       return;
+    }
     void ask(question, "user", settings);
     useReader.setState({ question: "" });
   }
 
   async function jumpToTimestamp(href: string) {
     const excerpt = video?.excerpts.find(({ url }) => url === href);
-    if (!video || !excerpt || reader.tabId === undefined) return;
+    if (!video || !excerpt || reader.tabId === undefined)
+      return;
     const moved = await seekYouTube(reader.tabId, video.id, excerpt.seconds);
     const current = useReader.getState();
     if (current.tabId === reader.tabId && current.page?.video === video)
@@ -309,10 +337,10 @@ function App() {
           size="sm"
           variant="outline"
           disabled={
-            sourceWindow === undefined ||
-            reader.loading ||
-            Boolean(reader.working) ||
-            switchingWindow
+            sourceWindow === undefined
+            || reader.loading
+            || Boolean(reader.working)
+            || switchingWindow
           }
           onClick={() => void changeDisplay()}
         >
@@ -339,7 +367,7 @@ function App() {
           </>
         )}
         {view === "memory" && <MemorySettings />}
-        {view === "history" && <History renderAnswer={(text) => <Prose text={text} />} />}
+        {view === "history" && <History renderAnswer={text => <Prose text={text} />} />}
         {view === "read" && (
           <>
             {reader.loading && (
@@ -374,9 +402,14 @@ function App() {
                     rel="noreferrer"
                     title="Open source in a new tab"
                   >
-                    {new URL(reader.page.url).hostname} ↗
+                    {new URL(reader.page.url).hostname}
+                    {" ↗"}
                   </a>
-                  <Button variant="ghost" size="sm" onClick={refresh}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={refresh}
+                  >
                     Refresh page
                   </Button>
                 </div>
@@ -406,60 +439,107 @@ function App() {
                         id={relatedDocsId}
                         checked={reader.includeRelatedDocs}
                         disabled={Boolean(reader.working)}
-                        onCheckedChange={(includeRelatedDocs) => useReader.setState({ includeRelatedDocs })}
+                        onCheckedChange={includeRelatedDocs => useReader.setState({ includeRelatedDocs })}
                       />
                       <Label htmlFor={relatedDocsId}>Include related docs</Label>
                     </div>
                   )}
-                  {reader.working ? (
-                    <Button variant="outline" onClick={stopReading}>
-                      Stop
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled={!profile}
-                      onClick={() => settings && void learn(settings)}
-                    >
-                      {learnLabel}
-                    </Button>
-                  )}
+                  {reader.working
+                    ? (
+                        <Button variant="outline" onClick={stopReading}>
+                          Stop
+                        </Button>
+                      )
+                    : (
+                        <Button
+                          disabled={!profile}
+                          onClick={() => settings && void learn(settings)}
+                        >
+                          {learnLabel}
+                        </Button>
+                      )}
                 </div>
                 {pendingDocsScope && !reader.working && (
-                  <p className="destination" role="status">Select {learnLabel} to apply the new scope.</p>
+                  <p className="destination" role="status">
+                    {"Select "}
+                    {learnLabel}
+                    {" "}
+                    to apply the new scope.
+                  </p>
                 )}
                 {profile && (
                   <p className="destination">
-                    {youtube ? "Transcript excerpts go to" : repo ? "Repository excerpts go to" : docs ? "Documentation excerpts go to" : "Model requests go to"} {modelEndpoint(profile).host}
-                    {system &&
-                    modelEndpoint(system).host !== modelEndpoint(profile).host
+                    {youtube ? "Transcript excerpts go to" : repo ? "Repository excerpts go to" : docs ? "Documentation excerpts go to" : "Model requests go to"}
+                    {" "}
+                    {modelEndpoint(profile).host}
+                    {system
+                      && modelEndpoint(system).host !== modelEndpoint(profile).host
                       ? ` and ${modelEndpoint(system).host}`
                       : ""}
                     .
                   </p>
                 )}
                 {youtube && !video && !reader.notice && (
-                  <p className="destination">Expand the video description and select <strong>Show transcript</strong> before learning this video.</p>
+                  <p className="destination">
+                    {"Expand the video description and select "}
+                    <strong>Show transcript</strong>
+                    {" "}
+                    before learning this video.
+                  </p>
                 )}
                 {video?.truncated && (
                   <p className="destination">The transcript was too long to capture in full. Answers use the captured captions.</p>
                 )}
                 {repository && (
                   <details className="destination [overflow-wrap:anywhere]">
-                    <summary className="cursor-pointer">Files inspected ({repository.files.length})</summary>
-                    <p>{repository.branch} · {repository.commit.slice(0, 7)}{repository.truncated ? " · Partial GitHub file tree" : ""}</p>
+                    <summary className="cursor-pointer">
+                      Files inspected (
+                      {repository.files.length}
+                      )
+                    </summary>
+                    <p>
+                      {repository.branch}
+                      {" "}
+                      ·
+                      {" "}
+                      {repository.commit.slice(0, 7)}
+                      {repository.truncated ? " · Partial GitHub file tree" : ""}
+                    </p>
                     <ul className="list-disc pl-5">
                       {repository.files.map(({ path, url }) => (
-                        <li key={path}><a className="underline" href={url} target="_blank" rel="noreferrer">{path}</a></li>
+                        <li key={path}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {path}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
                 )}
                 {docs && (
                   <details className="destination">
-                    <summary className="cursor-pointer">Documentation pages read ({docs.length})</summary>
+                    <summary className="cursor-pointer">
+                      Documentation pages read (
+                      {docs.length}
+                      )
+                    </summary>
                     <ul className="list-disc pl-5">
                       {docs.map(({ title, url }) => (
-                        <li key={url}><a className="underline" href={url} target="_blank" rel="noreferrer">{title}</a></li>
+                        <li key={url}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {title}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
@@ -492,20 +572,29 @@ function App() {
             <ReaderActivity steps={reader.activity} />
             {Object.entries(sections).map(([id, heading]) => {
               const text = reader.sections[id as Section];
-              if (!text) return null;
+              if (!text)
+                return null;
               return (
                 <Fragment key={id}>
                   <section className={`learning-section ${id === "intro" ? "intro" : ""}`}>
                     <h2>{heading}</h2>
-                    {id === "diagram" ? (
-                      reader.working === "learn" ? (
-                        <p className="muted">Generating diagram…</p>
-                      ) : (
-                        <Diagram source={text} />
-                      )
-                    ) : (
-                      <Prose text={text} sources={video?.excerpts ?? docs ?? repository?.files} onSourceClick={video ? jumpToTimestamp : undefined} />
-                    )}
+                    {id === "diagram"
+                      ? (
+                          reader.working === "learn"
+                            ? (
+                                <p className="muted">Generating diagram…</p>
+                              )
+                            : (
+                                <Diagram source={text} />
+                              )
+                        )
+                      : (
+                          <Prose
+                            text={text}
+                            sources={video?.excerpts ?? docs ?? repository?.files}
+                            onSourceClick={video ? jumpToTimestamp : undefined}
+                          />
+                        )}
                   </section>
                   {id === "intro" && repository && (
                     <RepositoryMap map={reader.architecture} pending={reader.working === "learn" && reader.architecture === undefined} />
@@ -517,21 +606,42 @@ function App() {
               <section className="chat-turn" key={index}>
                 <h2>{question}</h2>
                 <ReaderActivity steps={activity} />
-                {answer ? (
-                  <Prose text={answer} sources={video?.excerpts ?? docs ?? repositoryFiles ?? repository?.files} onSourceClick={video ? jumpToTimestamp : undefined} />
-                ) : reader.working === "chat" &&
-                  index === reader.chat.length - 1 ? (
-                  <p role="status" className="muted">
-                    Generating answer…
-                  </p>
-                ) : null}
+                {answer
+                  ? (
+                      <Prose
+                        text={answer}
+                        sources={video?.excerpts ?? docs ?? repositoryFiles ?? repository?.files}
+                        onSourceClick={video ? jumpToTimestamp : undefined}
+                      />
+                    )
+                  : reader.working === "chat"
+                    && index === reader.chat.length - 1
+                    ? (
+                        <p role="status" className="muted">
+                          Generating answer…
+                        </p>
+                      )
+                    : null}
                 {repositoryNotice && <p className="destination" role="status">{repositoryNotice}</p>}
                 {!!repositoryFiles?.length && (
                   <details className="destination [overflow-wrap:anywhere]">
-                    <summary className="cursor-pointer">Files inspected for this answer ({repositoryFiles.length})</summary>
+                    <summary className="cursor-pointer">
+                      Files inspected for this answer (
+                      {repositoryFiles.length}
+                      )
+                    </summary>
                     <ul className="list-disc pl-5">
                       {repositoryFiles.map(({ path, url }) => (
-                        <li key={path}><a className="underline" href={url} target="_blank" rel="noreferrer">{path}</a></li>
+                        <li key={path}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {path}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
@@ -545,15 +655,14 @@ function App() {
         <footer className="composer">
           {reader.suggestions.length > 0 && (
             <ul className="suggestions" aria-label="Suggested questions">
-              {reader.suggestions.map((suggestion) => (
+              {reader.suggestions.map(suggestion => (
                 <li key={suggestion}>
                   <Button
                     variant="secondary"
                     className="h-auto w-full justify-start whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]"
                     disabled={Boolean(reader.working) || pendingDocsScope}
                     onClick={() =>
-                      settings && void ask(suggestion, "suggestion", settings)
-                    }
+                      settings && void ask(suggestion, "suggestion", settings)}
                   >
                     {suggestion}
                   </Button>
@@ -571,9 +680,8 @@ function App() {
               value={question}
               maxLength={learningLimits.chat.questionCharacters}
               rows={2}
-              onChange={(event) =>
-                useReader.setState({ question: event.target.value })
-              }
+              onChange={event =>
+                useReader.setState({ question: event.target.value })}
             />
             <Button
               className="composer-send"
@@ -583,7 +691,11 @@ function App() {
               title="Send question"
               disabled={Boolean(reader.working) || pendingDocsScope || !question.trim()}
             >
-              <ArrowUp aria-hidden="true" className="size-5" strokeWidth={2.5} />
+              <ArrowUp
+                aria-hidden="true"
+                className="size-5"
+                strokeWidth={2.5}
+              />
             </Button>
           </form>
         </footer>

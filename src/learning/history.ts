@@ -55,7 +55,8 @@ export class ChatHistory {
     const url = youtubeVideo(page.url)?.url ?? origin + pathname;
     const { id, question, answer } = turn;
     await this.db.transaction("rw", this.turns, this.settings, async () => {
-      if (revision !== (await this.revision())) return;
+      if (revision !== (await this.revision()))
+        return;
       await this.prune(timestamp);
       await this.turns.put({
         id,

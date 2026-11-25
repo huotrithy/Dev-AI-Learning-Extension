@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
 
-import { readerPath } from '../learning/reader-window.ts';
-import { decisionSchemas } from './decision-schemas.ts';
-import { createGateway } from './gateway.ts';
-import { hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from './profiles.ts';
-import { handleModelSettings } from './settings-worker.ts';
-import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from './worker-protocol.ts';
+import { readerPath } from "../learning/reader-window.ts";
+import { decisionSchemas } from "./decision-schemas.ts";
+import { createGateway } from "./gateway.ts";
+import { hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from "./profiles.ts";
+import { handleModelSettings } from "./settings-worker.ts";
+import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from "./worker-protocol.ts";
 
 function isReaderUrl(url?: string): boolean {
   return url?.split(/[?#]/, 1)[0] === chrome.runtime.getURL(readerPath);
@@ -16,10 +16,12 @@ export function serveModelPort(port: chrome.runtime.Port): void {
   const { signal } = controller;
   port.onDisconnect.addListener(() => controller.abort());
   const reply = (message: ModelReply) => {
-    if (signal.aborted) return;
+    if (signal.aborted)
+      return;
     try {
       port.postMessage(message);
-    } catch {
+    }
+    catch {
       controller.abort();
     }
   };
@@ -33,7 +35,7 @@ export function serveModelPort(port: chrome.runtime.Port): void {
   async function run(message: unknown) {
     const parsed = modelCommandSchema.safeParse(message);
     if (!parsed.success) {
-      reply({ type: 'error', code: 'request' });
+      reply({ type: "error", code: "request" });
       return;
     }
     try {
@@ -42,40 +44,46 @@ export function serveModelPort(port: chrome.runtime.Port): void {
       signal.throwIfAborted();
       const profile = profiles.find(({ id }) => id === expected.id);
       if (!profile || profile.provider !== expected.provider || profile.endpoint !== expected.endpoint || profile.model !== expected.model) {
-        reply({ type: 'error', code: 'profile-changed' });
+        reply({ type: "error", code: "profile-changed" });
         return;
       }
       const endpoint = modelRequestEndpoint(profile);
       if (!await chrome.permissions.contains({ origins: [hostPermission(endpoint)] })) {
-        throw new Error('Model endpoint permission unavailable.');
+        throw new Error("Model endpoint permission unavailable.");
       }
       signal.throwIfAborted();
       const gateway = createGateway(profile, profile);
       if (decision) {
         const result = await gateway.decide(request, decisionSchemas[decision], signal);
-        reply(result === undefined ? { type: 'done' } : { type: 'done', decision: result });
-      } else {
-        for await (const text of gateway.stream(request, signal)) reply({ type: 'chunk', text });
-        reply({ type: 'done' });
+        reply(result === undefined ? { type: "done" } : { type: "done", decision: result });
       }
-    } catch (error) {
-      reply({ type: 'error', code: error instanceof InsecureModelEndpointError ? 'endpoint' : 'request' });
+      else {
+        for await (const text of gateway.stream(request, signal)) reply({ type: "chunk", text });
+        reply({ type: "done" });
+      }
+    }
+    catch (error) {
+      reply({ type: "error", code: error instanceof InsecureModelEndpointError ? "endpoint" : "request" });
     }
   }
 }
 
 export function registerModelWorker(): void {
   chrome.runtime.onConnect.addListener((port) => {
-    if (port.name !== modelPortName) return;
-    if (port.sender?.id === chrome.runtime.id && isReaderUrl(port.sender.url)) serveModelPort(port);
+    if (port.name !== modelPortName)
+      return;
+    if (port.sender?.id === chrome.runtime.id && isReaderUrl(port.sender.url))
+      serveModelPort(port);
     else port.disconnect();
   });
   const worker = globalThis as unknown as ServiceWorkerGlobalScope;
-  worker.addEventListener('message', (event) => {
+  worker.addEventListener("message", (event) => {
     const source = event.source;
     const [port] = event.ports;
-    if (event.data?.channel !== modelSettingsChannel || !port || !source || !('url' in source) ||
-        source.type !== 'window' || !isReaderUrl(source.url)) return;
+    if (event.data?.channel !== modelSettingsChannel || !port || !source || !("url" in source)
+      || source.type !== "window" || !isReaderUrl(source.url)) {
+      return;
+    }
     event.waitUntil(handleModelSettings(event.data.command).then((reply) => {
       port.postMessage(reply);
       port.close();

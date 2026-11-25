@@ -1,8 +1,8 @@
-import { z } from 'zod';
-import { choiceSchema } from '../memory/types.ts';
+import { z } from "zod";
+import { choiceSchema } from "../memory/types.ts";
 
 export const decisionSchemas = {
-  route: z.object({ sourceType: z.enum(['page', 'paper', 'docs', 'repo']), diagram: z.boolean() }),
+  route: z.object({ sourceType: z.enum(["page", "paper", "docs", "repo"]), diagram: z.boolean() }),
   observations: z.object({ observations: z.array(z.object({
     choice: choiceSchema,
     topicSpecific: z.boolean(),
