@@ -5,6 +5,7 @@ import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile, RepositorySource } from "../page/github.ts";
 import { learningLimits } from "./config.ts";
 import { pageContext } from "./context.ts";
+import { mermaidFlowchart } from "./flowchart.ts";
 import { architectureInstructions } from "./prompts.ts";
 
 const architectureSchema = decisionSchemas.architecture;
@@ -63,26 +64,9 @@ export async function readArchitecture(
   return { components, connections };
 }
 
-function diagramLabel(text: string, fallback: string): string {
-  const label = text
-    .replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return label.replace(/\b(click|href) /gi, "$1-") || fallback;
-}
-
 export function architectureFlowchart({
   components,
   connections,
 }: RepositoryArchitecture): string {
-  return [
-    "flowchart TD",
-    ...components.map(
-      ({ id, name }) => `n${id}["${diagramLabel(name, "Component")}"]`,
-    ),
-    ...connections.map(
-      ({ from, to, label }) =>
-        `n${from} -->|${diagramLabel(label, "connects to")}| n${to}`,
-    ),
-  ].join("\n");
+  return mermaidFlowchart({ components, connections });
 }

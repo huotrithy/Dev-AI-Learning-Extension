@@ -55,10 +55,11 @@ export async function decideWithFallback<T>(
 function createModel(profile: ModelProfile): LanguageModel {
   const { key, model, provider } = profile;
   const customHeaders = modelHeaders(profile);
+  const exactEndpoint = provider === "compatible" && profile.chatEndpoint ? modelRequestEndpoint(profile).href : undefined;
   const providerFetch: typeof fetch = (input, init) => {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     customHeaders.forEach((value, name) => headers.set(name, value));
-    return fetch(input, { ...init, headers, redirect: "error" });
+    return fetch(exactEndpoint ?? input, { ...init, headers, redirect: "error" });
   };
   if (provider === "openai")
     return createOpenAI({ apiKey: key, fetch: providerFetch }).chat(model);

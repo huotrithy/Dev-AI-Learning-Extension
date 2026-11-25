@@ -2,8 +2,9 @@
 
 import { readerPath } from "../learning/reader-window.ts";
 import { decisionSchemas } from "./decision-schemas.ts";
+import { classifyWithFreeLlm } from "./freellm-decisions.ts";
 import { createGateway } from "./gateway.ts";
-import { hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from "./profiles.ts";
+import { decisionProvider, hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from "./profiles.ts";
 import { handleModelSettings } from "./settings-worker.ts";
 import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from "./worker-protocol.ts";
 
@@ -43,7 +44,8 @@ export function serveModelPort(port: chrome.runtime.Port): void {
       const { profiles } = await loadSettings();
       signal.throwIfAborted();
       const profile = profiles.find(({ id }) => id === expected.id);
-      if (!profile || profile.provider !== expected.provider || profile.endpoint !== expected.endpoint || profile.model !== expected.model) {
+      if (!profile || profile.provider !== expected.provider || profile.endpoint !== expected.endpoint
+        || profile.chatEndpoint !== expected.chatEndpoint || profile.model !== expected.model) {
         reply({ type: "error", code: "profile-changed" });
         return;
       }
@@ -52,6 +54,13 @@ export function serveModelPort(port: chrome.runtime.Port): void {
         throw new Error("Model endpoint permission unavailable.");
       }
       signal.throwIfAborted();
+      if (profile.provider === decisionProvider) {
+        if (decision !== "route")
+          throw new Error("This profile only classifies sources.");
+        const result = await classifyWithFreeLlm(profile, request, signal);
+        reply(result === undefined ? { type: "done" } : { type: "done", decision: result });
+        return;
+      }
       const gateway = createGateway(profile, profile);
       if (decision) {
         const result = await gateway.decide(request, decisionSchemas[decision], signal);

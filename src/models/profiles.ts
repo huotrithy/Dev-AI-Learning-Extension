@@ -1,4 +1,6 @@
-export type Provider = "compatible" | "openai" | "anthropic";
+export const decisionProvider = "freellm-decisions";
+export const providers = ["compatible", "openai", "anthropic", decisionProvider] as const;
+export type Provider = typeof providers[number];
 
 export interface ModelHeader {
   name: string;
@@ -11,6 +13,7 @@ export interface ModelProfileDetails {
   provider: Provider;
   model: string;
   endpoint: string;
+  chatEndpoint?: string;
   toolCalls: boolean;
   disableThinking: boolean;
 }
@@ -62,9 +65,10 @@ export function modelEndpoint(profile: ModelProfileDetails): URL {
     return new URL("https://api.openai.com/v1");
   if (profile.provider === "anthropic")
     return new URL("https://api.anthropic.com/v1");
-  const endpoint = new URL(profile.endpoint);
+  const url = profile.provider === "compatible" && profile.chatEndpoint ? profile.chatEndpoint : profile.endpoint;
+  const endpoint = new URL(url);
   if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new Error("Enter an HTTP or HTTPS base URL without credentials, a query, or a fragment.");
+    throw new Error("Enter an HTTP or HTTPS URL without credentials, a query, or a fragment.");
   }
   return endpoint;
 }

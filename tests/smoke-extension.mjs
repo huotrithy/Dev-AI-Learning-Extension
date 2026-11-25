@@ -45,21 +45,30 @@ const server = createServer(async (request, response) => {
     }
     if (system.includes("Write one or two short"))
       decision = { questions: ["What happens if a worker crashes before acknowledging a job?"] };
+    if (system.includes("Extract a small flowchart")) {
+      decision = {
+        nodes: ["Broker", "Worker"],
+        connections: [{
+          from: 0,
+          to: 1,
+          label: "redelivers jobs",
+          evidence: "A broker can redeliver jobs a worker does not acknowledge.",
+        }],
+      };
+    }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ ...envelope, choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify(decision) }, finish_reason: "stop" }] }));
     return;
   }
 
   prompts.push({ system, prompt });
-  const content = prompt.startsWith("Write one small Mermaid")
-    ? "flowchart LR\nA[Broker] --> B[Worker]"
-    : system.includes("The repository tree is a sample")
-      ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
-      : prompt.includes("Question: How do I set max_concurrency?")
-        ? `Set the [worker concurrency limit](http://127.0.0.1:${server.address().port}/third).`
-        : prompt.includes("What does the broker track?")
-          ? "Acknowledgments let a broker track whether a job finished.\n\n| Item | Meaning |\n| --- | --- |\n| ACK | Job finished |"
-          : "Acknowledgments let a broker track whether a job finished.";
+  const content = system.includes("The repository tree is a sample")
+    ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
+    : prompt.includes("Question: How do I set max_concurrency?")
+      ? `Set the [worker concurrency limit](http://127.0.0.1:${server.address().port}/third).`
+      : prompt.includes("What does the broker track?")
+        ? "Acknowledgments let a broker track whether a job finished.\n\n| Item | Meaning |\n| --- | --- |\n| ACK | Job finished |"
+        : "Acknowledgments let a broker track whether a job finished.";
   response.writeHead(200, { "content-type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`);
   response.end(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
@@ -596,6 +605,32 @@ try {
   await reopened.getByRole("button", { name: "Clear history", exact: true }).click();
   await reopened.getByRole("button", { name: "Clear all", exact: true }).click();
   await reopened.getByText("No saved conversations yet.").waitFor();
+  await reopened.getByRole("button", { name: "Settings" }).click();
+  await reopened.getByRole("button", { name: "Add profile", exact: true }).click();
+  await reopened.getByLabel("Profile name", { exact: true }).fill("Exact chat fixture");
+  await reopened.getByLabel("Base URL", { exact: true }).fill("https://previous.example.test/v1");
+  await reopened.locator("#api-key").fill("draft-key");
+  await reopened.getByLabel("Chat endpoint URL (optional)", { exact: true }).fill(`${modelEndpoint}/chat/completions`);
+  assert.equal(await reopened.locator("#api-key").inputValue(), "", "Draft credentials are cleared when the destination changes");
+  await reopened.getByLabel("Base URL", { exact: true }).fill("");
+  assert.equal(await reopened.getByLabel("Base URL", { exact: true }).getAttribute("required"), null);
+  await reopened.getByLabel("Model ID", { exact: true }).fill("fixture");
+  await reopened.getByRole("button", { name: "Save profile", exact: true }).click();
+  await reopened.getByRole("dialog").waitFor({ state: "hidden" });
+  await reopened.getByRole("button", { name: "Edit Exact chat fixture", exact: true }).click();
+  assert.equal(await reopened.getByLabel("Chat endpoint URL (optional)", { exact: true }).inputValue(), `${modelEndpoint}/chat/completions`);
+  await reopened.keyboard.press("Escape");
+  await reopened.getByRole("button", { name: "Add profile", exact: true }).click();
+  await reopened.getByLabel("Provider", { exact: true }).selectOption({ label: "FreeLLM Decision API" });
+  await reopened.getByLabel("Profile name", { exact: true }).fill("Decision fixture");
+  await reopened.getByLabel("Decision endpoint URL", { exact: true }).fill(`${modelEndpoint}/decisions`);
+  assert.equal(await reopened.getByLabel("Model ID", { exact: true }).inputValue(), "auto");
+  await reopened.getByRole("button", { name: "Save profile", exact: true }).click();
+  await reopened.getByRole("dialog").waitFor({ state: "hidden" });
+  assert.equal(await reopened.getByLabel("Explanation model", { exact: true }).getByRole("option", { name: "Decision fixture" }).count(), 0);
+  await reopened.getByLabel("System 1 model", { exact: true }).selectOption({ label: "Decision fixture" });
+  await reopened.locator("#system-model:enabled").waitFor();
+  assert.equal(await reopened.locator("#system-model option:checked").textContent(), "Decision fixture");
   await reopened.close();
 
   await context.route(repoHome, route => route.fulfill({ contentType: "text/html", body: "<title>Public repository fixture</title>" }));

@@ -15,6 +15,7 @@ import type { SettingsCommand } from "../../src/models/worker-protocol.ts";
 
 import {
   createProfileDetails,
+  decisionProvider,
   hostPermission,
   modelEndpoint,
 
@@ -25,6 +26,7 @@ const providers: Record<Provider, string> = {
   compatible: "OpenAI-compatible (local or hosted)",
   openai: "OpenAI",
   anthropic: "Anthropic",
+  [decisionProvider]: "FreeLLM Decision API",
 };
 
 type HeaderEdit = { name: string; value: string; savedIndex?: number };
@@ -48,6 +50,8 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
   const key = profile?.key;
   const savedProfile = settings.profiles.find(({ id }) => id === profile?.id);
   const editorOpen = profile !== undefined;
+  const isDecision = profile?.provider === decisionProvider;
+  const chatProfiles = settings.profiles.filter(({ provider }) => provider !== decisionProvider);
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -74,8 +78,15 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
         return current;
       const next = { ...current, [key]: value };
       const changedProvider = key === "provider" && value !== current.provider;
-      const changedSavedEndpoint = key === "endpoint" && value !== current.endpoint && savedProfile !== undefined;
-      if (changedProvider || changedSavedEndpoint) {
+      const editingDestination = key === "chatEndpoint" || (key === "endpoint" && !current.chatEndpoint);
+      const hadDestination = Boolean(current.chatEndpoint || current.endpoint);
+      const changedDestination = editingDestination && value !== current[key] && (savedProfile !== undefined || hadDestination);
+      if (changedProvider && (next.provider === decisionProvider || current.provider === decisionProvider)) {
+        next.endpoint = "";
+        next.chatEndpoint = undefined;
+        next.model = next.provider === decisionProvider ? "auto" : "";
+      }
+      if (changedProvider || changedDestination) {
         next.keySaved = false;
         next.key = "";
         next.headers = [];
@@ -108,7 +119,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
       const keyUpdate = key === "" || trimmedKey !== "" ? trimmedKey : undefined;
       if (!details.label.trim() || !details.model.trim())
         throw new Error("Enter a profile name and a model ID.");
-      if (details.provider !== "compatible" && !trimmedKey && !keySaved && savedProfile?.provider !== details.provider) {
+      if ((details.provider === "openai" || details.provider === "anthropic") && !trimmedKey && !keySaved && savedProfile?.provider !== details.provider) {
         throw new Error("Enter an API key for this provider.");
       }
       const endpoint = modelEndpoint(details);
@@ -182,11 +193,12 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
             <Label htmlFor="explanation-model">Explanation model</Label>
             <NativeSelect
               id="explanation-model"
-              disabled={saving}
+              disabled={saving || chatProfiles.length === 0}
               value={settings.main}
               onChange={event => void assign("main", event.target.value)}
             >
-              {settings.profiles.map(({ id, label }) => <NativeSelectOption key={id} value={id}>{label}</NativeSelectOption>)}
+              {chatProfiles.length === 0 && <NativeSelectOption value="">Add a chat profile</NativeSelectOption>}
+              {chatProfiles.map(({ id, label }) => <NativeSelectOption key={id} value={id}>{label}</NativeSelectOption>)}
             </NativeSelect>
           </div>
           <div className="field">
@@ -276,16 +288,45 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                   </NativeSelect>
                 </div>
                 {profile.provider === "compatible" && (
+                  <>
+                    <div className="field">
+                      <Label htmlFor="base-url">Base URL</Label>
+                      <Input
+                        id="base-url"
+                        required={!profile.chatEndpoint}
+                        type="url"
+                        placeholder="http://localhost:8080/v1"
+                        value={profile.endpoint}
+                        onChange={event => change("endpoint", event.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <Label htmlFor="chat-endpoint">Chat endpoint URL (optional)</Label>
+                      <Input
+                        id="chat-endpoint"
+                        type="url"
+                        placeholder="https://example.com/api/chat"
+                        value={profile.chatEndpoint ?? ""}
+                        aria-describedby="chat-endpoint-help"
+                        onChange={event => change("chatEndpoint", event.target.value)}
+                      />
+                      <small id="chat-endpoint-help">Use this full URL for OpenAI-compatible chat requests.</small>
+                    </div>
+                  </>
+                )}
+                {isDecision && (
                   <div className="field">
-                    <Label htmlFor="base-url">Base URL</Label>
+                    <Label htmlFor="decision-endpoint">Decision endpoint URL</Label>
                     <Input
-                      id="base-url"
+                      id="decision-endpoint"
                       required
                       type="url"
-                      placeholder="http://localhost:8080/v1"
+                      placeholder="https://example.com/v1/decisions"
                       value={profile.endpoint}
+                      aria-describedby="decision-endpoint-help"
                       onChange={event => change("endpoint", event.target.value)}
                     />
+                    <small id="decision-endpoint-help">Select this profile for System 1 source classification. Other tasks use the explanation model.</small>
                   </div>
                 )}
                 <div className="field">
@@ -293,7 +334,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                   <Input
                     id="model-id"
                     required
-                    placeholder="Model ID from your provider"
+                    placeholder={isDecision ? "auto or a decision model ID" : "Model ID from your provider"}
                     value={profile.model}
                     onChange={event => change("model", event.target.value)}
                   />
@@ -301,7 +342,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                 <div className="field">
                   <Label htmlFor="api-key">
                     API key
-                    {profile.provider === "compatible" ? " (optional)" : ""}
+                    {(profile.provider === "compatible" || isDecision) ? " (optional)" : ""}
                   </Label>
                   <Input
                     id="api-key"
@@ -372,31 +413,33 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                     </Button>
                   </div>
                 </fieldset>
-                <details className="grid gap-2">
-                  <summary className="cursor-pointer">Advanced model options</summary>
-                  <div className="checkbox-row mt-2">
-                    <Checkbox
-                      id="tool-calls"
-                      checked={profile.toolCalls}
-                      onCheckedChange={checked => change("toolCalls", checked)}
-                    />
-                    <Label htmlFor="tool-calls">Use forced tool calls</Label>
-                  </div>
-                  {profile.provider === "compatible" && (
-                    <div className="checkbox-row">
+                {!isDecision && (
+                  <details className="grid gap-2">
+                    <summary className="cursor-pointer">Advanced model options</summary>
+                    <div className="checkbox-row mt-2">
                       <Checkbox
-                        id="disable-thinking"
-                        checked={profile.disableThinking}
-                        onCheckedChange={checked => change("disableThinking", checked)}
+                        id="tool-calls"
+                        checked={profile.toolCalls}
+                        onCheckedChange={checked => change("toolCalls", checked)}
                       />
-                      <Label htmlFor="disable-thinking">Disable thinking on MLX servers</Label>
+                      <Label htmlFor="tool-calls">Use forced tool calls</Label>
                     </div>
-                  )}
-                </details>
+                    {profile.provider === "compatible" && (
+                      <div className="checkbox-row">
+                        <Checkbox
+                          id="disable-thinking"
+                          checked={profile.disableThinking}
+                          onCheckedChange={checked => change("disableThinking", checked)}
+                        />
+                        <Label htmlFor="disable-thinking">Disable thinking on MLX servers</Label>
+                      </div>
+                    )}
+                  </details>
+                )}
                 <p className="muted">
                   {"This profile sends model requests, its API key, and custom headers to "}
                   <strong>{destination}</strong>
-                  . Requests can include page text, questions, and relevant memories.
+                  {isDecision ? ". Classification requests include a page excerpt." : ". Requests can include page text, questions, and relevant memories."}
                 </p>
                 {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
                 <div className="button-row">

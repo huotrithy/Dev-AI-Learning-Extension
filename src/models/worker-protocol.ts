@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PublicModelSettings } from "./profiles.ts";
+import { providers } from "./profiles.ts";
 import { decisionSchemas } from "./decision-schemas.ts";
 
 export const modelPortName = "model-request";
@@ -12,9 +13,10 @@ export const settingsCommandSchema = z.discriminatedUnion("type", [
     profile: z.object({
       id: z.string().min(1),
       label: z.string().trim(),
-      provider: z.enum(["compatible", "openai", "anthropic"]),
+      provider: z.enum(providers),
       model: z.string().trim(),
       endpoint: z.string().trim(),
+      chatEndpoint: z.string().trim().optional(),
       toolCalls: z.boolean(),
       disableThinking: z.boolean(),
       revision: z.string().optional(),
@@ -35,8 +37,9 @@ export type SettingsReply = { settings: PublicModelSettings } | { error: string 
 export const modelCommandSchema = z.object({
   profile: z.object({
     id: z.string().min(1),
-    provider: z.enum(["compatible", "openai", "anthropic"]),
+    provider: z.enum(providers),
     endpoint: z.string(),
+    chatEndpoint: z.string().optional(),
     model: z.string(),
   }),
   request: z.object({
