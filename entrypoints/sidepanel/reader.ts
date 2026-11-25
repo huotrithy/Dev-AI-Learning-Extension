@@ -158,7 +158,6 @@ function restoreReader(tabId: number | undefined, page: PageSource, snapshot: Re
 export async function loadPage(
   windowId: number,
   restore?: ReaderSnapshot,
-  acceptTab?: (tab: chrome.tabs.Tab) => boolean,
 ): Promise<void> {
   const previous = useReader.getState();
   resetPage(previous.tabId);
@@ -173,10 +172,6 @@ export async function loadPage(
       return;
     if (tab?.id === undefined)
       throw new Error("Open a web page to start reading.");
-    if (acceptTab && !acceptTab(tab)) {
-      useReader.setState({ tabId: tab.id, loading: false });
-      return;
-    }
     useReader.setState({ tabId: tab.id });
     const repo = githubRepository(tab.url ?? "");
     const youtube = youtubeVideo(tab.url ?? "");

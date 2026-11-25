@@ -593,7 +593,7 @@ try {
   const { sameHostTab, otherHostTab } = await worker.evaluate(async (origin) => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     const sameHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin}/first` });
-    const otherHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin.replace("127.0.0.1", "localhost")}/first` });
+    const otherHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin.replace("127.0.0.1", "localhost")}/third` });
     return { sameHostTab: sameHost.id, otherHostTab: otherHost.id };
   }, origin);
   const activate = tabId => worker.evaluate(id => chrome.tabs.update(id, { active: true }), tabId);
@@ -620,7 +620,20 @@ try {
   await floatingAgain.getByRole("button", { name: "Refresh page", exact: true }).click();
   await floatingAgain.getByRole("heading", { name: "Reliable work queues" }).waitFor();
   assert.equal(await floatingAgain.getByRole("heading", { name: "What does the broker track?" }).count(), 0);
-  await Promise.all([floatingAgain.waitForEvent("close", { timeout: 5_000 }), activate(otherHostTab)]);
+  await activate(otherHostTab);
+  await floatingAgain.getByRole("heading", { name: "Queue rate limits" }).waitFor();
+  await activate(articleTab);
+  await floatingAgain.getByRole("heading", { name: "Reliable work queues" }).waitFor();
+  await Promise.all([
+    floatingAgain.waitForEvent("close", { timeout: 10_000 }),
+    floatingAgain.getByRole("button", { name: "Dock to sidebar" }).click(),
+  ]);
+  panelTarget = (await targets()).targetInfos.find(({ url }) => url === sidebarUrl);
+  assert.ok(panelTarget, "Docking reopens the native side panel");
+  ({ sessionId } = await cdp.send("Target.attachToTarget", { targetId: panelTarget.targetId, flatten: false }));
+  await waitFor("Reliable work queues");
+  await activate(otherHostTab);
+  await waitFor("Queue rate limits");
 
   const reopened = await context.newPage();
   await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);

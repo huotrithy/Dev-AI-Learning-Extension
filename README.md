@@ -19,7 +19,7 @@ Expand **Activity** to see source reads, model calls, and fallbacks for an expla
 
 Use **Open floating window** in the reader header to move it into a resizable window. Use **Dock to sidebar** to bring it back. Both modes read the active tab in the browser window where you opened the reader and carry your explanation, chat, and draft when you switch. Older browser versions may require you to close the sidebar manually after opening the floating window.
 
-An open chat or unsent draft stays with its original page when you switch tabs or follow a link. To start a new reading session on the active page, choose **Refresh page**. Before you start a chat or draft, leaving the current hostname closes the reader. Click the toolbar icon to open it on the new tab and grant access. The `tabs` permission lets the extension compare hostnames, while `activeTab` grants access to read page content when you click the icon. Older browsers without `sidePanel.close()` require you to close the sidebar manually after a site change.
+The sidebar and floating reader stay open when you switch tabs or sites. An open chat or unsent draft stays with its original page. Choose **Refresh page** to start a new reading session on the active page. The `tabs` permission lets the reader identify the active page. If the reader asks for access to a page, click the extension icon on that tab to grant `activeTab` access.
 
 ## Use FreeLLMAPI
 
