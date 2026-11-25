@@ -1,6 +1,9 @@
 import type { ModelGateway } from "../models/gateway.ts";
 import type { RepositoryFile } from "../page/github.ts";
+
 import { decisionSchemas } from "../models/decision-schemas.ts";
+import { FreeLlmDecisionError } from "../models/freellm-decisions.ts";
+import { DecisionEndpointAsChatError } from "../models/profiles.ts";
 
 export type ActivityStatus
   = | "running"
@@ -70,7 +73,8 @@ export function trackModelActivity(
         finish();
       }
       catch (error) {
-        finish(signal.aborted ? "stopped" : "error");
+        const result = error instanceof DecisionEndpointAsChatError ? { detail: `${models.main} · ${error.message}` } : undefined;
+        finish(signal.aborted ? "stopped" : "error", result);
         throw error;
       }
       finally {
@@ -78,19 +82,20 @@ export function trackModelActivity(
       }
     },
     async decide(request, schema, signal) {
-      const finish = activity.start(
-        request.activity ?? "Make a routing decision",
-        schema === decisionSchemas.diagram || (models.classificationOnly && schema !== decisionSchemas.route)
-          ? models.main
-          : models.system,
-      );
+      const model = schema === decisionSchemas.diagram || (models.classificationOnly && schema !== decisionSchemas.route)
+        ? models.main
+        : models.system;
+      const finish = activity.start(request.activity ?? "Make a routing decision", model);
       try {
         const decision = await gateway.decide(request, schema, signal);
         finish(decision === undefined ? "fallback" : "done");
         return decision;
       }
       catch (error) {
-        finish(signal.aborted ? "stopped" : "error");
+        const result = error instanceof FreeLlmDecisionError || error instanceof DecisionEndpointAsChatError
+          ? { detail: `${model} · ${error.message}` }
+          : undefined;
+        finish(signal.aborted ? "stopped" : "error", result);
         throw error;
       }
     },

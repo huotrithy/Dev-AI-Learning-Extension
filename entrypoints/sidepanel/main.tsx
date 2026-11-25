@@ -26,6 +26,7 @@ import {
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
 import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
+import { AnswerFeedback } from "./AnswerFeedback.tsx";
 import { ChatTurn } from "./ChatTurn.tsx";
 import { CodeSnippet } from "./CodeSnippet.tsx";
 import { ReaderActivity } from "./ReaderActivity.tsx";
@@ -49,6 +50,7 @@ import {
   invalidateTab,
   learn,
   loadPage,
+  reviseAnswer,
   stopReading,
   useReader,
   watchMemoryChanges,
@@ -431,7 +433,7 @@ function App() {
                       <NativeSelect
                         id={depthId}
                         value={reader.depth}
-                        disabled={reader.working === "learn"}
+                        disabled={Boolean(reader.working)}
                         onChange={(event) => {
                           const depth = event.target.value as Depth;
                           useReader.setState({ depth });
@@ -607,6 +609,14 @@ function App() {
                             onSourceClick={video ? jumpToTimestamp : undefined}
                           />
                         )}
+                    {id === "intro" && reader.working !== "learn" && settings && profile && (
+                      <AnswerFeedback
+                        key={reader.session}
+                        style={reader.introStyle}
+                        disabled={Boolean(reader.working) || pendingDocsScope}
+                        revise={style => reviseAnswer("intro", style, settings)}
+                      />
+                    )}
                   </section>
                   {id === "intro" && repository && (
                     <RepositoryMap map={reader.architecture} pending={reader.working === "learn" && reader.architecture === undefined} />
@@ -614,8 +624,8 @@ function App() {
                 </Fragment>
               );
             })}
-            {reader.chat.map(({ question, answer, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
-              <ChatTurn key={index} question={question}>
+            {reader.chat.map(({ id, question, answer, style, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
+              <ChatTurn key={id ?? index} question={question}>
                 <ReaderActivity steps={activity} />
                 {answer
                   ? (
@@ -656,6 +666,13 @@ function App() {
                       ))}
                     </ul>
                   </details>
+                )}
+                {answer.trim() && settings && profile && (
+                  <AnswerFeedback
+                    style={style}
+                    disabled={Boolean(reader.working) || pendingDocsScope}
+                    revise={style => reviseAnswer(index, style, settings)}
+                  />
                 )}
               </ChatTurn>
             ))}

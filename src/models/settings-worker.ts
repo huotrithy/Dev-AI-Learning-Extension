@@ -1,14 +1,16 @@
 import {
-  decisionProvider,
   hostPermission,
+  isNativeDecision,
   modelEndpoint,
   modelHeaders,
   modelRequestEndpoint,
+  profileType,
   loadSettings,
   saveSettings,
   type ModelProfile,
   type ModelSettings,
   type PublicModelSettings,
+  usesCompatibleChat,
 } from "./profiles.ts";
 import { settingsCommandSchema, type SettingsCommand, type SettingsReply } from "./worker-protocol.ts";
 
@@ -24,6 +26,7 @@ export function publicModelSettings(settings: ModelSettings): PublicModelSetting
         id,
         label,
         provider,
+        type: profileType(profile),
         model,
         endpoint,
         ...(chatEndpoint ? { chatEndpoint } : {}),
@@ -43,7 +46,7 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
     const profile = profiles.find(({ id }) => id === command.id);
     if (!profile)
       throw new Error("This profile is no longer available.");
-    if (command.role === "main" && profile.provider === decisionProvider)
+    if (command.role === "main" && profileType(profile) !== "chat")
       throw new Error("Select a chat profile for the explanation model.");
     return { ...settings, [command.role]: command.id };
   }
@@ -52,23 +55,24 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
     if (!removed || profileRevision(removed) !== command.revision)
       throw new Error("This profile changed. Reopen the reader and try again.");
     const remaining = profiles.filter(({ id }) => id !== command.id);
-    const fallback = remaining.find(({ provider }) => provider !== decisionProvider)?.id ?? "";
+    const fallback = remaining.find(item => profileType(item) === "chat")?.id ?? "";
     return { profiles: remaining, main: main === command.id ? fallback : main, system: system === command.id ? fallback || remaining[0]?.id || "" : system };
   }
 
-  const { id, label, provider, model, endpoint, chatEndpoint, toolCalls, disableThinking, key, customHeaders, revision } = command.profile;
+  const { id, label, provider, type, model, endpoint, chatEndpoint, toolCalls, disableThinking, key, customHeaders, revision } = command.profile;
   const existing = profiles.find(item => item.id === id);
   if ((existing ? profileRevision(existing) : undefined) !== revision)
     throw new Error("This profile changed. Reopen the reader and try again.");
-  const profile: ModelProfile = { id, label, provider, model, endpoint, toolCalls, disableThinking, key: "", revision: crypto.randomUUID() };
-  if (provider === "compatible" && chatEndpoint)
+  const profile: ModelProfile = { id, label, provider, type, model, endpoint, toolCalls, disableThinking, key: "", revision: crypto.randomUUID() };
+  if (usesCompatibleChat(profile) && chatEndpoint)
     profile.chatEndpoint = chatEndpoint;
   if (profile.chatEndpoint && endpoint)
     modelEndpoint({ ...profile, chatEndpoint: undefined });
   const destination = modelEndpoint(profile).href;
   let previous: ModelProfile | undefined;
   try {
-    if (existing?.provider === provider && Boolean(existing.chatEndpoint) === Boolean(profile.chatEndpoint) && modelEndpoint(existing).href === destination)
+    if (existing?.provider === provider && isNativeDecision(existing) === isNativeDecision(profile)
+      && Boolean(existing.chatEndpoint) === Boolean(profile.chatEndpoint) && modelEndpoint(existing).href === destination)
       previous = existing;
   }
   catch { /* Invalid older endpoints cannot retain credentials. */ }
@@ -89,8 +93,8 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
   modelRequestEndpoint(profile);
   modelHeaders(profile);
   const updated = existing ? profiles.map(item => item.id === id ? profile : item) : [...profiles, profile];
-  const explanation = updated.find(item => item.id === main && item.provider !== decisionProvider)
-    ?? updated.find(item => item.provider !== decisionProvider);
+  const explanation = updated.find(item => item.id === main && profileType(item) === "chat")
+    ?? updated.find(item => profileType(item) === "chat");
   return {
     profiles: updated,
     main: explanation?.id ?? "",

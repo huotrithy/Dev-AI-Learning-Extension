@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { liveQuery } from "dexie";
 import { LatestRequest, streamAnswer, streamLearning, type ChatTurn } from "../../src/learning/session.ts";
+import type { AnswerStyle } from "../../src/learning/answer-style.ts";
+import { introductionQuestion } from "../../src/learning/prompts.ts";
 import { createActivity, trackModelActivity, type ActivityStep } from "../../src/learning/activity.ts";
 import { chatHistory } from "../../src/learning/history.ts";
 import { defaultDepth, learningLimits, type Depth, type Section } from "../../src/learning/config.ts";
@@ -9,7 +11,7 @@ import { extractObservations, prepareSuggestions, type UserTurn } from "../../sr
 import { pageScope } from "../../src/memory/policy.ts";
 import { DexieMemoryRepository, runWithCurrentMemory } from "../../src/memory/repository.ts";
 import { emptyMemory } from "../../src/memory/types.ts";
-import { decisionProvider, InsecureModelEndpointError, type PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
+import { InsecureModelEndpointError, isNativeDecision, type PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
 import { createWorkerGateway, ModelProfileChangedError } from "../../src/models/worker-client.ts";
 import type { ModelGateway } from "../../src/models/gateway.ts";
 import { readTab, readYouTube } from "../../src/page/active-tab.ts";
@@ -23,10 +25,11 @@ interface ReaderState {
   tabId?: number;
   session: string;
   loading: boolean;
-  working: "learn" | "chat" | null;
+  working: "learn" | "chat" | "revise" | null;
   depth: Depth;
   includeRelatedDocs: boolean;
   sections: Partial<Record<Section, string>>;
+  introStyle?: AnswerStyle;
   architecture?: RepositoryArchitecture | null;
   activity: ActivityStep[];
   chat: ChatTurn[];
@@ -44,6 +47,7 @@ const initialReader: ReaderState = {
   depth: defaultDepth,
   includeRelatedDocs: false,
   sections: {},
+  introStyle: undefined,
   architecture: undefined,
   activity: [],
   chat: [],
@@ -54,7 +58,7 @@ const initialReader: ReaderState = {
   historyError: undefined,
 };
 
-export type ReaderSnapshot = Pick<ReaderState, "tabId" | "session" | "depth" | "includeRelatedDocs" | "sections" | "architecture" | "chat" | "suggestions" | "question" | "notice"> & { url?: string; loadedSource?: PageSource; activity?: ActivityStep[] };
+export type ReaderSnapshot = Pick<ReaderState, "tabId" | "session" | "depth" | "includeRelatedDocs" | "sections" | "introStyle" | "architecture" | "chat" | "suggestions" | "question" | "notice"> & { url?: string; loadedSource?: PageSource; activity?: ActivityStep[] };
 
 export function hasActiveChat({ chat, question }: Pick<ReaderState, "chat" | "question">): boolean {
   return chat.length > 0 || Boolean(question.trim());
@@ -66,9 +70,9 @@ export function hasPendingDocsScope({ page, includeRelatedDocs }: Pick<ReaderSta
 
 export function snapshotReader(): ReaderSnapshot {
   const state = useReader.getState();
-  const { tabId, page, session, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, notice } = state;
+  const { tabId, page, session, depth, includeRelatedDocs, sections, introStyle, architecture, activity, chat, suggestions, question, notice } = state;
   const loadedSource = hasActiveChat(state) || page?.repository || page?.docs || page?.video ? page : undefined;
-  return { tabId, url: page?.url, session, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, notice, loadedSource };
+  return { tabId, url: page?.url, session, depth, includeRelatedDocs, sections, introStyle, architecture, activity, chat, suggestions, question, notice, loadedSource };
 }
 
 export const memory = new DexieMemoryRepository();
@@ -85,7 +89,7 @@ function selectedGateway(settings: ModelSettings) {
     throw new Error("Select an explanation model.");
   return {
     gateway: createWorkerGateway(main, system ?? main),
-    models: { main: main.model, system: (system ?? main).model, classificationOnly: system?.provider === decisionProvider },
+    models: { main: main.model, system: (system ?? main).model, classificationOnly: isNativeDecision(system ?? main) },
   };
 }
 
@@ -147,8 +151,8 @@ export function invalidateTab(tabId: number): void {
 }
 
 function restoreReader(tabId: number | undefined, page: PageSource, snapshot: ReaderSnapshot): void {
-  const { depth, includeRelatedDocs = Boolean(page.docs), sections, architecture, activity = [], chat, suggestions, question, session, notice } = snapshot;
-  useReader.setState({ tabId, page, depth, includeRelatedDocs, sections, architecture, activity, chat, suggestions, question, session, notice, loading: false });
+  const { depth, includeRelatedDocs = Boolean(page.docs), sections, introStyle, architecture, activity = [], chat, suggestions, question, session, notice } = snapshot;
+  useReader.setState({ tabId, page, depth, includeRelatedDocs, sections, introStyle, architecture, activity, chat, suggestions, question, session, notice, loading: false });
 }
 
 export async function loadPage(
@@ -222,7 +226,7 @@ export async function learn(settings: ModelSettings): Promise<void> {
   const controller = request.start();
   clearSuggestions();
   const set = useReader.setState;
-  set({ working: "learn", depth, sections: {}, architecture: undefined, activity: [], error: "", notice: "" });
+  set({ working: "learn", depth, sections: {}, introStyle: undefined, architecture: undefined, activity: [], error: "", notice: "" });
   const repo = githubRepository(page.url);
   const youtube = youtubeVideo(page.url);
   const activity = createActivity(controller.signal, (steps) => {
@@ -344,6 +348,19 @@ export async function learn(settings: ModelSettings): Promise<void> {
   }
 }
 
+async function findAnswerSource(page: PageSource, question: string, signal: AbortSignal) {
+  if (page.docs)
+    return { source: searchDocs(page, question) };
+  try {
+    return { source: await traceRepository(page, question, signal) };
+  }
+  catch (error) {
+    signal.throwIfAborted();
+    const detail = error instanceof RepositoryReadError ? `${error.message} ` : "";
+    return { source: page, repositoryNotice: `${detail}This answer uses the repository excerpts already loaded.` };
+  }
+}
+
 export async function ask(text: string, origin: UserTurn["origin"], settings: ModelSettings): Promise<void> {
   const reader = useReader.getState();
   const { page, session, chat, depth, working, sections } = reader;
@@ -356,7 +373,7 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
   const observedAt = performance.timeOrigin + performance.now();
   const scope = pageScope(page);
   const set = useReader.setState;
-  const turn: ChatTurn = { question, answer: "" };
+  const turn: ChatTurn = { id: turnId, question, answer: "" };
   set({ working: "chat", chat: [...chat, { ...turn }], error: "", historyError: undefined });
   const publish = () => {
     if (request.isCurrent(controller))
@@ -372,12 +389,8 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
     const { status, context } = await readMemory(scope);
     controller.signal.throwIfAborted();
     const finishSource = activity.start(page.repository ? "Look for relevant repository files" : page.docs ? "Search the loaded documentation" : "Use the loaded page text");
-    const source = page.docs ? searchDocs(page, question) : await traceRepository(page, question, controller.signal).catch((error: unknown) => {
-      controller.signal.throwIfAborted();
-      const detail = error instanceof RepositoryReadError ? `${error.message} ` : "";
-      turn.repositoryNotice = `${detail}This answer uses the repository excerpts already loaded.`;
-      return page;
-    });
+    const { source, repositoryNotice } = await findAnswerSource(page, question, controller.signal);
+    turn.repositoryNotice = repositoryNotice;
     turn.docsReferences = docsReferences(source);
     turn.repositoryFiles = source.repository?.files.map(({ path, url }) => ({ path, url }));
     if (!request.isCurrent(controller))
@@ -435,6 +448,79 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
         ? error.message
         : "Could not finish the answer. Check the model settings or try asking again." });
     }
+  }
+  finally {
+    if (request.isCurrent(controller))
+      set({ working: null });
+  }
+}
+
+export async function reviseAnswer(target: "intro" | number, style: AnswerStyle, settings: ModelSettings): Promise<void> {
+  const reader = useReader.getState();
+  const { page, chat, sections, session, depth, working } = reader;
+  const turn = target === "intro" ? undefined : chat[target];
+  const previousAnswer = target === "intro" ? sections.intro : turn?.answer;
+  if (!page || !previousAnswer?.trim() || working || hasPendingDocsScope(reader))
+    return;
+
+  const controller = request.start();
+  const { signal } = controller;
+  const set = useReader.setState;
+  const historyRevision = turn?.id ? chatHistory.revision().catch(() => undefined) : undefined;
+  set({ working: "revise", error: "", historyError: undefined });
+  try {
+    const { gateway } = selectedGateway(settings);
+    const { status, context } = await readMemory(pageScope(page));
+    signal.throwIfAborted();
+    const question = turn?.question ?? introductionQuestion;
+    const { source, repositoryNotice } = turn ? await findAnswerSource(page, question, signal) : { source: page };
+    signal.throwIfAborted();
+    const scopedGateway = protectRecall(gateway, context.prompt ? status?.revision : undefined);
+    const earlier = target === "intro" ? [] : chat.slice(0, target);
+    const explanation = turn ? sections : {};
+    let answer = "";
+    for await (const chunk of streamAnswer(source, question, earlier, depth, context.prompt, scopedGateway, signal, explanation, { style, previousAnswer })) {
+      signal.throwIfAborted();
+      answer += chunk;
+    }
+    signal.throwIfAborted();
+    if (!answer.trim())
+      throw new Error("The model returned no visible text.");
+
+    if (target === "intro") {
+      set({ sections: { ...sections, intro: answer }, introStyle: style });
+    }
+    else if (turn) {
+      const revised: ChatTurn = {
+        ...turn,
+        answer,
+        style,
+        docsReferences: docsReferences(source),
+        repositoryFiles: source.repository?.files.map(({ path, url }) => ({ path, url })),
+        repositoryNotice,
+      };
+      set({ chat: chat.map((item, index) => index === target ? revised : item) });
+      if (turn.id) {
+        try {
+          const revision = await historyRevision;
+          if (revision === undefined)
+            throw new Error("History unavailable");
+          if (request.isCurrent(controller))
+            await chatHistory.revise(revision, session, turn.id, answer);
+        }
+        catch {
+          if (request.isCurrent(controller))
+            set({ historyError: "Could not save the revised answer to history." });
+        }
+      }
+    }
+  }
+  catch (error) {
+    if (!request.isCurrent(controller))
+      return;
+    throw error instanceof InsecureModelEndpointError || error instanceof ModelProfileChangedError
+      ? error
+      : new Error("Could not revise this answer. Try again.");
   }
   finally {
     if (request.isCurrent(controller))

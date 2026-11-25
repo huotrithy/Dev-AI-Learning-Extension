@@ -10,15 +10,17 @@ import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/src/components/ui/native-select";
 
-import type { ModelProfileDetails, Provider, PublicModelProfile, PublicModelSettings as Settings } from "../../src/models/profiles.ts";
+import type { ModelProfileDetails, ProfileType, Provider, PublicModelProfile, PublicModelSettings as Settings } from "../../src/models/profiles.ts";
 import type { SettingsCommand } from "../../src/models/worker-protocol.ts";
 
 import {
   createProfileDetails,
-  decisionProvider,
+  freeLlmProvider,
   hostPermission,
+  isNativeDecision,
   modelEndpoint,
-
+  profileType,
+  usesCompatibleChat,
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
 
@@ -26,7 +28,7 @@ const providers: Record<Provider, string> = {
   compatible: "OpenAI-compatible (local or hosted)",
   openai: "OpenAI",
   anthropic: "Anthropic",
-  [decisionProvider]: "FreeLLM Decision API",
+  [freeLlmProvider]: "FreeLLM",
 };
 
 type HeaderEdit = { name: string; value: string; savedIndex?: number };
@@ -34,7 +36,7 @@ type ProfileEdit = ModelProfileDetails & { keySaved: boolean; key?: string; revi
 
 function editProfile(saved?: PublicModelProfile): ProfileEdit {
   if (!saved)
-    return { ...createProfileDetails(), keySaved: false, headers: [] };
+    return { ...createProfileDetails(), type: "chat", keySaved: false, headers: [] };
   const { headerNames, ...profile } = saved;
   return { ...profile, headers: headerNames.map((name, savedIndex) => ({ name, savedIndex, value: "" })) };
 }
@@ -50,8 +52,8 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
   const key = profile?.key;
   const savedProfile = settings.profiles.find(({ id }) => id === profile?.id);
   const editorOpen = profile !== undefined;
-  const isDecision = profile?.provider === decisionProvider;
-  const chatProfiles = settings.profiles.filter(({ provider }) => provider !== decisionProvider);
+  const nativeDecision = profile !== undefined && isNativeDecision(profile);
+  const chatProfiles = settings.profiles.filter(saved => profileType(saved) === "chat");
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -81,12 +83,13 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
       const editingDestination = key === "chatEndpoint" || (key === "endpoint" && !current.chatEndpoint);
       const hadDestination = Boolean(current.chatEndpoint || current.endpoint);
       const changedDestination = editingDestination && value !== current[key] && (savedProfile !== undefined || hadDestination);
-      if (changedProvider && (next.provider === decisionProvider || current.provider === decisionProvider)) {
+      const changedNativeApi = isNativeDecision(next) !== isNativeDecision(current);
+      if (changedNativeApi) {
         next.endpoint = "";
         next.chatEndpoint = undefined;
-        next.model = next.provider === decisionProvider ? "auto" : "";
+        next.model = isNativeDecision(next) ? "auto" : "";
       }
-      if (changedProvider || changedDestination) {
+      if (changedProvider || changedDestination || changedNativeApi) {
         next.keySaved = false;
         next.key = "";
         next.headers = [];
@@ -287,7 +290,18 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                     {Object.entries(providers).map(([id, label]) => <NativeSelectOption key={id} value={id}>{label}</NativeSelectOption>)}
                   </NativeSelect>
                 </div>
-                {profile.provider === "compatible" && (
+                <div className="field">
+                  <Label htmlFor="profile-type">Type</Label>
+                  <NativeSelect
+                    id="profile-type"
+                    value={profileType(profile)}
+                    onChange={event => change("type", event.target.value as ProfileType)}
+                  >
+                    <NativeSelectOption value="chat">Chat</NativeSelectOption>
+                    <NativeSelectOption value="decision">Decision</NativeSelectOption>
+                  </NativeSelect>
+                </div>
+                {usesCompatibleChat(profile) && (
                   <>
                     <div className="field">
                       <Label htmlFor="base-url">Base URL</Label>
@@ -314,7 +328,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                     </div>
                   </>
                 )}
-                {isDecision && (
+                {nativeDecision && (
                   <div className="field">
                     <Label htmlFor="decision-endpoint">Decision endpoint URL</Label>
                     <Input
@@ -334,7 +348,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                   <Input
                     id="model-id"
                     required
-                    placeholder={isDecision ? "auto or a decision model ID" : "Model ID from your provider"}
+                    placeholder={nativeDecision ? "auto or a decision model ID" : "Model ID from your provider"}
                     value={profile.model}
                     onChange={event => change("model", event.target.value)}
                   />
@@ -342,7 +356,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                 <div className="field">
                   <Label htmlFor="api-key">
                     API key
-                    {(profile.provider === "compatible" || isDecision) ? " (optional)" : ""}
+                    {(profile.provider === "compatible" || profile.provider === freeLlmProvider) ? " (optional)" : ""}
                   </Label>
                   <Input
                     id="api-key"
@@ -413,7 +427,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                     </Button>
                   </div>
                 </fieldset>
-                {!isDecision && (
+                {!nativeDecision && (
                   <details className="grid gap-2">
                     <summary className="cursor-pointer">Advanced model options</summary>
                     <div className="checkbox-row mt-2">
@@ -424,7 +438,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                       />
                       <Label htmlFor="tool-calls">Use forced tool calls</Label>
                     </div>
-                    {profile.provider === "compatible" && (
+                    {usesCompatibleChat(profile) && (
                       <div className="checkbox-row">
                         <Checkbox
                           id="disable-thinking"
@@ -439,7 +453,7 @@ export function ModelSettings({ settings, onSave }: { settings: Settings; onSave
                 <p className="muted">
                   {"This profile sends model requests, its API key, and custom headers to "}
                   <strong>{destination}</strong>
-                  {isDecision ? ". Classification requests include a page excerpt." : ". Requests can include page text, questions, and relevant memories."}
+                  {nativeDecision ? ". Classification requests include a page excerpt." : ". Requests can include page text, questions, and relevant memories."}
                 </p>
                 {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
                 <div className="button-row">

@@ -2,9 +2,9 @@
 
 import { readerPath } from "../learning/reader-window.ts";
 import { decisionSchemas } from "./decision-schemas.ts";
-import { classifyWithFreeLlm } from "./freellm-decisions.ts";
+import { classifyWithFreeLlm, FreeLlmDecisionError } from "./freellm-decisions.ts";
 import { createGateway } from "./gateway.ts";
-import { decisionProvider, hostPermission, InsecureModelEndpointError, loadSettings, modelRequestEndpoint } from "./profiles.ts";
+import { DecisionEndpointAsChatError, hostPermission, InsecureModelEndpointError, isNativeDecision, loadSettings, modelRequestEndpoint, profileType } from "./profiles.ts";
 import { handleModelSettings } from "./settings-worker.ts";
 import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from "./worker-protocol.ts";
 
@@ -45,7 +45,7 @@ export function serveModelPort(port: chrome.runtime.Port): void {
       signal.throwIfAborted();
       const profile = profiles.find(({ id }) => id === expected.id);
       if (!profile || profile.provider !== expected.provider || profile.endpoint !== expected.endpoint
-        || profile.chatEndpoint !== expected.chatEndpoint || profile.model !== expected.model) {
+        || profile.chatEndpoint !== expected.chatEndpoint || profile.model !== expected.model || profileType(profile) !== profileType(expected)) {
         reply({ type: "error", code: "profile-changed" });
         return;
       }
@@ -54,13 +54,15 @@ export function serveModelPort(port: chrome.runtime.Port): void {
         throw new Error("Model endpoint permission unavailable.");
       }
       signal.throwIfAborted();
-      if (profile.provider === decisionProvider) {
+      if (isNativeDecision(profile)) {
         if (decision !== "route")
           throw new Error("This profile only classifies sources.");
         const result = await classifyWithFreeLlm(profile, request, signal);
-        reply(result === undefined ? { type: "done" } : { type: "done", decision: result });
+        reply({ type: "done", decision: result });
         return;
       }
+      if (!decision && profileType(profile) !== "chat")
+        throw new Error("Select a chat profile for the explanation model.");
       const gateway = createGateway(profile, profile);
       if (decision) {
         const result = await gateway.decide(request, decisionSchemas[decision], signal);
@@ -72,6 +74,14 @@ export function serveModelPort(port: chrome.runtime.Port): void {
       }
     }
     catch (error) {
+      if (error instanceof DecisionEndpointAsChatError) {
+        reply({ type: "error", code: "decision-endpoint-as-chat" });
+        return;
+      }
+      if (error instanceof FreeLlmDecisionError) {
+        reply({ type: "error", code: "decision", failure: error.failure });
+        return;
+      }
       reply({ type: "error", code: error instanceof InsecureModelEndpointError ? "endpoint" : "request" });
     }
   }

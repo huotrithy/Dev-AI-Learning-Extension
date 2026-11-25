@@ -4,18 +4,21 @@ import type { DocsReference } from "../page/docs.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile } from "../page/github.ts";
 import type { ActivityStep } from "./activity.ts";
+import type { AnswerRevision, AnswerStyle } from "./answer-style.ts";
 import { readArchitecture, type RepositoryArchitecture } from "./architecture.ts";
 import { learningLimits, type Depth, type Section } from "./config.ts";
 import { pageContext } from "./context.ts";
 import { readPageDiagram } from "./page-diagram.ts";
-import { answerPrompt, classificationInstructions, explanationPrompt, introductionPrompt, sectionPrompt } from "./prompts.ts";
+import { answerPrompt, classificationInstructions, explanationPrompt, introductionPrompt, revisionPrompt, sectionPrompt } from "./prompts.ts";
 
 export type LearningEvent
   = | { section: Section; text: string }
     | { section: "architecture"; map: RepositoryArchitecture | null };
 export interface ChatTurn {
+  id?: string;
   question: string;
   answer: string;
+  style?: AnswerStyle;
   docsReferences?: DocsReference[];
   repositoryFiles?: Pick<RepositoryFile, "path" | "url">[];
   repositoryNotice?: string;
@@ -134,11 +137,12 @@ export function streamAnswer(
   gateway: ModelGateway,
   signal: AbortSignal,
   explanation: Partial<Record<Section, string>> = {},
+  revision?: AnswerRevision,
 ): AsyncIterable<string> {
   return gateway.stream({
-    system: explanationPrompt(page, depth, memory),
-    prompt: answerPrompt(page, question, history, explanation),
+    system: explanationPrompt(page, depth, memory) + (revision ? revisionPrompt(revision.style) : ""),
+    prompt: answerPrompt(page, question, history, explanation, revision),
     maxOutputTokens: learningLimits.outputTokens.detailed,
-    activity: "Write the answer",
+    activity: revision ? "Revise the answer" : "Write the answer",
   }, signal);
 }

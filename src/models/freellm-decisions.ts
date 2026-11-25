@@ -30,7 +30,30 @@ const responseSchema = z.object({
   }),
 });
 
-export async function classifyWithFreeLlm(profile: ModelProfile, request: ModelRequest, signal: AbortSignal): Promise<z.infer<typeof decisionSchemas.route> | undefined> {
+type DecisionFailure = number | "no-decision-keys" | "invalid-answer";
+
+const decisionFailureMessages: Partial<Record<DecisionFailure, string>> = {
+  "no-decision-keys": "FreeLLM has no usable decision model. Add or enable a Cloudflare or OpenRouter key in FreeLLM.",
+  "invalid-answer": "FreeLLM returned an invalid classification.",
+  "401": "FreeLLM rejected authentication (HTTP 401). Check the API key in the System 1 profile.",
+  "403": "The decision endpoint denied access (HTTP 403). Check the System 1 profile credentials and headers.",
+  "404": "The decision URL or model was not found (HTTP 404). Check the System 1 profile.",
+  "429": "FreeLLM decision models are rate limited (HTTP 429). Try again later.",
+};
+
+const noDecisionKeysSchema = z.object({
+  error: z.object({ code: z.literal("no_decision_keys") }),
+});
+
+export class FreeLlmDecisionError extends Error {
+  readonly failure: DecisionFailure;
+  constructor(failure: DecisionFailure) {
+    super(decisionFailureMessages[failure] ?? `Decision request failed (HTTP ${failure}).`);
+    this.failure = failure;
+  }
+}
+
+export async function classifyWithFreeLlm(profile: ModelProfile, request: ModelRequest, signal: AbortSignal): Promise<z.infer<typeof decisionSchemas.route>> {
   const headers = modelHeaders(profile);
   headers.set("Content-Type", "application/json");
   if (profile.key && !headers.has("Authorization"))
@@ -44,12 +67,20 @@ export async function classifyWithFreeLlm(profile: ModelProfile, request: ModelR
     body: JSON.stringify({ model: profile.model, state: request.prompt, questions }),
   });
   if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(`Decision request failed (HTTP ${response.status}).`);
+    if (response.status === 503 && response.headers.get("Content-Type")?.includes("application/json")) {
+      const error = noDecisionKeysSchema.safeParse(await response.json().catch(() => undefined));
+      signal.throwIfAborted();
+      if (error.success)
+        throw new FreeLlmDecisionError("no-decision-keys");
+    }
+    else {
+      await response.body?.cancel();
+    }
+    throw new FreeLlmDecisionError(response.status);
   }
   const result = responseSchema.safeParse(await response.json().catch(() => undefined));
   signal.throwIfAborted();
   if (!result.success)
-    return undefined;
+    throw new FreeLlmDecisionError("invalid-answer");
   return { sourceType: result.data.answers.sourceType.choice, diagram: result.data.answers.diagram.noul > 0.5 };
 }

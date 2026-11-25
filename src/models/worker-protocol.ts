@@ -1,7 +1,10 @@
 import { z } from "zod";
+
+import type { FreeLlmDecisionError } from "./freellm-decisions.ts";
 import type { PublicModelSettings } from "./profiles.ts";
-import { providers } from "./profiles.ts";
+
 import { decisionSchemas } from "./decision-schemas.ts";
+import { profileTypes, providers } from "./profiles.ts";
 
 export const modelPortName = "model-request";
 export const modelSettingsChannel = "model-settings";
@@ -14,6 +17,7 @@ export const settingsCommandSchema = z.discriminatedUnion("type", [
       id: z.string().min(1),
       label: z.string().trim(),
       provider: z.enum(providers),
+      type: z.enum(profileTypes).optional(),
       model: z.string().trim(),
       endpoint: z.string().trim(),
       chatEndpoint: z.string().trim().optional(),
@@ -38,6 +42,7 @@ export const modelCommandSchema = z.object({
   profile: z.object({
     id: z.string().min(1),
     provider: z.enum(providers),
+    type: z.enum(profileTypes).optional(),
     endpoint: z.string(),
     chatEndpoint: z.string().optional(),
     model: z.string(),
@@ -54,4 +59,5 @@ export type ModelCommand = z.infer<typeof modelCommandSchema>;
 export type ModelReply
   = | { type: "chunk"; text: string }
     | { type: "done"; decision?: unknown }
-    | { type: "error"; code: "endpoint" | "profile-changed" | "request" };
+    | { type: "error"; code: "decision"; failure: FreeLlmDecisionError["failure"] }
+  | { type: "error"; code: "endpoint" | "decision-endpoint-as-chat" | "profile-changed" | "request" };

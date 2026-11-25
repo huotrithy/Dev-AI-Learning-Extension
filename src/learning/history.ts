@@ -104,6 +104,13 @@ export class ChatHistory {
     );
   }
 
+  async revise(revision: number, session: string, id: string, answer: string): Promise<void> {
+    await this.db.transaction("rw", this.turns, this.settings, async () => {
+      if (revision === (await this.revision()))
+        await this.turns.update([session, id], { answer });
+    });
+  }
+
   async prune(now = Date.now()): Promise<void> {
     await this.turns
       .where("timestamp")

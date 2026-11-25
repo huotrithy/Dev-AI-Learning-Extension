@@ -12,7 +12,7 @@ A Chrome side panel for learning technical pages with your own model. It streams
    pnpm run build
    ```
 
-3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, click **Add profile**, choose a provider, give the profile a name, and enter the model ID and credentials from your provider. For an **OpenAI-compatible** provider, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
+3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, click **Add profile**, choose a **Provider** and **Type**, and enter the profile name, model ID, and credentials. Use **Chat** for the explanation model. A **Decision** profile is for **System 1**. OpenAI and other chat providers can use their regular API to return a structured decision. For **OpenAI-compatible**, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
 4. Return to **Read** and select **Learn this page**. Click the toolbar icon on a new tab when it needs page access.
 
 Expand **Activity** to see source reads, model calls, and fallbacks for an explanation or answer. Code snippets have line numbers and controls for wrapping and copying.
@@ -32,13 +32,15 @@ An open chat or unsent draft stays with its original page when you switch tabs o
    | Field                                     | Value                                                                                                                                                                                                    |
    | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
    | Profile name                              | `FreeLLMAPI`                                                                                                                                                                                             |
-   | Provider                                  | **OpenAI-compatible (local or hosted)**                                                                                                                                                                  |
+   | Provider                                  | **FreeLLM**                                                                                                                                                                                              |
+   | Type                                      | **Chat**                                                                                                                                                                                                 |
    | Base URL                                  | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
    | Model ID                                  | `auto` to use the gateway's fallback chain                                                                                                                                                               |
    | API key                                   | The unified API key from FreeLLMAPI                                                                                                                                                                      |
    | Custom headers and advanced model options | Leave headers blank and both toggles off to start                                                                                                                                                        |
 
-4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it. You can also select the profile for **System 1** and test a fresh reading session.
+4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it.
+5. To use FreeLLM’s dedicated decision models for source classification, add a separate profile with **FreeLLM** as the **Provider** and **Decision** as the **Type**. Enter the full **Decision endpoint URL** ending in `/v1/decisions`, and use `auto` or a decision model ID. Select it as the **System 1 model**.
 
 Keep the gateway running while you use the extension. When the gateway routes to a cloud provider, that provider receives the model request, which can include page excerpts, questions, and relevant saved preferences.
 

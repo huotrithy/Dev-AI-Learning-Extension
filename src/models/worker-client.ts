@@ -1,6 +1,8 @@
-import { decisionSchemas } from "./decision-schemas.ts";
 import type { ModelGateway } from "./gateway.ts";
-import { decisionProvider, InsecureModelEndpointError } from "./profiles.ts";
+
+import { decisionSchemas } from "./decision-schemas.ts";
+import { FreeLlmDecisionError } from "./freellm-decisions.ts";
+import { DecisionEndpointAsChatError, InsecureModelEndpointError, isNativeDecision } from "./profiles.ts";
 import {
   modelPortName,
   modelSettingsChannel,
@@ -88,8 +90,12 @@ async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncG
         if (message.type === "error") {
           if (message.code === "endpoint")
             throw new InsecureModelEndpointError();
+          if (message.code === "decision-endpoint-as-chat")
+            throw new DecisionEndpointAsChatError();
           if (message.code === "profile-changed")
             throw new ModelProfileChangedError();
+          if (message.code === "decision")
+            throw new FreeLlmDecisionError(message.failure);
           throw new Error("The model request failed.");
         }
         yield message;
@@ -108,7 +114,7 @@ async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncG
 }
 
 export function createWorkerGateway(main: ModelCommand["profile"], system: ModelCommand["profile"]): ModelGateway {
-  const binding = ({ id, provider, endpoint, chatEndpoint, model }: ModelCommand["profile"]) => ({ id, provider, endpoint, chatEndpoint, model });
+  const binding = ({ id, provider, type, endpoint, chatEndpoint, model }: ModelCommand["profile"]) => ({ id, provider, type, endpoint, chatEndpoint, model });
   const mainProfile = binding(main);
   const systemProfile = binding(system);
   return {
@@ -123,7 +129,7 @@ export function createWorkerGateway(main: ModelCommand["profile"], system: Model
       const decision = names.find(name => decisionSchemas[name] === schema);
       if (!decision)
         throw new Error("Unknown model decision schema.");
-      const profile = decision === "diagram" || (systemProfile.provider === decisionProvider && decision !== "route")
+      const profile = decision === "diagram" || (isNativeDecision(systemProfile) && decision !== "route")
         ? mainProfile
         : systemProfile;
       for await (const reply of requestModel({ profile, request, decision }, signal)) {

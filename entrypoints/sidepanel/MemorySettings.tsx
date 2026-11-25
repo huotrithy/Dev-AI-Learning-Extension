@@ -14,6 +14,7 @@ import { invalidateMemoryWork, memory } from "./reader.ts";
 const kinds: Record<Choice["kind"], string> = {
   "example-language": "Example language",
   "example-placement": "Example placement",
+  "example-frequency": "Include examples",
   "depth": "Amount of detail",
   "intent": "Follow-up interest",
 };
