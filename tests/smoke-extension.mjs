@@ -225,6 +225,14 @@ try {
       checked: toggle?.getAttribute('aria-checked'),
     };
   })()`), { buttons: ["Learn this page"], checked: "false" }, "Docs scope is optional and shares the page action");
+  await sendPanel("Emulation.setDeviceMetricsOverride", { width: 960, height: 720, deviceScaleFactor: 1, mobile: false });
+  assert.equal(await evaluate(`(() => {
+    const depth = document.querySelector('#depth').getBoundingClientRect();
+    const docs = document.querySelector('.related-docs-option').getBoundingClientRect();
+    const action = document.querySelector('.read-actions > button').getBoundingClientRect();
+    const gap = docs.left - depth.right;
+    return gap >= 0 && gap <= 24 && action.left - docs.right > gap;
+  })()`), true, "The related-docs checkbox sits next to Depth in the wide reader");
   const docsCheckbox = "document.querySelector(\".read-actions [role=checkbox]\")";
   const pageOnlyStart = prompts.length;
   await click("Learn this page");
@@ -310,10 +318,10 @@ try {
     const style = getComputedStyle(question);
     question.focus();
     return send.disabled && !send.textContent.trim() && Boolean(send.querySelector('svg')) &&
-      question.clientHeight <= 2 * parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) &&
-      send.getBoundingClientRect().top >= question.getBoundingClientRect().bottom &&
+      question.clientHeight <= Math.ceil(parseFloat(style.lineHeight)) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) &&
+      send.getBoundingClientRect().left >= question.getBoundingClientRect().right &&
       getComputedStyle(form).outlineStyle === 'solid';
-  })()`), true, "The empty composer fits two lines and shows a focus outline and an icon-only Send button");
+  })()`), true, "The empty composer fits one line with an inline icon-only Send button");
   await evaluate(`(() => {
     const question = document.querySelector('#question');
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'Always use TypeScript examples.');
@@ -520,6 +528,11 @@ try {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, ${JSON.stringify(draft)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  assert.equal(await evaluate(`(() => {
+    const question = document.querySelector('#question');
+    const style = getComputedStyle(question);
+    return question.clientHeight > parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  })()`), true, "The composer grows for multiline drafts");
   const [floating] = await Promise.all([
     context.waitForEvent("page", { timeout: 10_000 }),
     click("Open floating window"),

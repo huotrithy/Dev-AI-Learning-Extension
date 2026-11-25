@@ -403,55 +403,59 @@ function App() {
             )}
             {reader.page && (
               <section className="source" aria-labelledby="page-title">
-                <div className="source-meta">
-                  <a
-                    href={reader.page.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Open source in a new tab"
-                  >
-                    {new URL(reader.page.url).hostname}
-                    {" ↗"}
-                  </a>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={refresh}
-                  >
-                    Refresh page
-                  </Button>
-                </div>
-                <h1 id="page-title">{reader.page.title}</h1>
-                <div className="read-actions">
-                  <div className="field">
-                    <Label htmlFor={depthId}>Depth</Label>
-                    <NativeSelect
-                      id={depthId}
-                      value={reader.depth}
-                      disabled={reader.working === "learn"}
-                      onChange={(event) => {
-                        const depth = event.target.value as Depth;
-                        useReader.setState({ depth });
-                        if (settings && reader.sections.intro && !pendingDocsScope)
-                          void learn(settings);
-                      }}
+                <header className="source-heading">
+                  <div className="source-meta">
+                    <a
+                      href={reader.page.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open source in a new tab"
                     >
-                      {Object.entries(depthLabels).map(([value, label]) => (
-                        <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                      {new URL(reader.page.url).hostname}
+                      {" ↗"}
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={refresh}
+                    >
+                      Refresh page
+                    </Button>
                   </div>
-                  {!repo && !youtube && Boolean(reader.page.relatedLinks?.length) && (
-                    <div className="related-docs-option">
-                      <Checkbox
-                        id={relatedDocsId}
-                        checked={reader.includeRelatedDocs}
-                        disabled={Boolean(reader.working)}
-                        onCheckedChange={includeRelatedDocs => useReader.setState({ includeRelatedDocs })}
-                      />
-                      <Label htmlFor={relatedDocsId}>Include related docs</Label>
+                  <h1 id="page-title">{reader.page.title}</h1>
+                </header>
+                <div className="read-actions">
+                  <div className="read-options">
+                    <div className="field">
+                      <Label htmlFor={depthId}>Depth</Label>
+                      <NativeSelect
+                        id={depthId}
+                        value={reader.depth}
+                        disabled={reader.working === "learn"}
+                        onChange={(event) => {
+                          const depth = event.target.value as Depth;
+                          useReader.setState({ depth });
+                          if (settings && reader.sections.intro && !pendingDocsScope)
+                            void learn(settings);
+                        }}
+                      >
+                        {Object.entries(depthLabels).map(([value, label]) => (
+                          <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
+                        ))}
+                      </NativeSelect>
                     </div>
-                  )}
+                    {!repo && !youtube && Boolean(reader.page.relatedLinks?.length) && (
+                      <div className="related-docs-option">
+                        <Checkbox
+                          id={relatedDocsId}
+                          checked={reader.includeRelatedDocs}
+                          disabled={Boolean(reader.working)}
+                          onCheckedChange={includeRelatedDocs => useReader.setState({ includeRelatedDocs })}
+                        />
+                        <Label htmlFor={relatedDocsId}>Include related docs</Label>
+                      </div>
+                    )}
+                  </div>
                   {reader.working
                     ? (
                         <Button variant="outline" onClick={stopReading}>
@@ -686,7 +690,7 @@ function App() {
               placeholder={youtube ? "Ask about this video…" : repo ? "Ask about this repo…" : docs ? "Ask about these docs…" : "Ask about this page…"}
               value={question}
               maxLength={learningLimits.chat.questionCharacters}
-              rows={2}
+              rows={1}
               onChange={event =>
                 useReader.setState({ question: event.target.value })}
             />
