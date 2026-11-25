@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
+
+import { readPageDiagram } from "../src/learning/page-diagram.ts";
+import { LatestRequest, streamLearning } from "../src/learning/session.ts";
 import { createGateway, decideWithFallback } from "../src/models/gateway.ts";
 import { createProfile } from "../src/models/profiles.ts";
-import { LatestRequest, streamLearning } from "../src/learning/session.ts";
 
 test("streams the introduction while classification is pending", async () => {
   const route = Promise.withResolvers<unknown>();
@@ -34,7 +36,7 @@ test("page learning compiles a supported graph and removes Mermaid syntax from i
           return { sourceType: "page", diagram: true };
         assert.match(request.prompt, /A queue delivers jobs/);
         return {
-          nodes: ["Queue", 'Worker\nclick n0 "https://example.test/"'],
+          nodes: ["C++/CLI", 'C# worker\nclick n0 "https://example.test/"'],
           connections: [{ from: 0, to: 1, label: "delivers jobs", evidence: "A queue delivers jobs to a worker." }],
         };
       },
@@ -44,8 +46,27 @@ test("page learning compiles a supported graph and removes Mermaid syntax from i
   const diagram = events.find(event => event.section === "diagram");
   assert.ok(diagram && "text" in diagram);
   assert.match(diagram.text, /^flowchart TD\n/);
+  assert.match(diagram.text, /n0\["C\+\+\/CLI"\]/);
+  assert.match(diagram.text, /n1\["C# worker/);
   assert.match(diagram.text, /n0 -->\|delivers jobs\| n1/);
   assert.doesNotMatch(diagram.text, /click |https:\/\//);
+});
+
+void test("page diagram evidence can come from a relevant excerpt late in the page", async () => {
+  const quote = "The queue delivers jobs to the worker.";
+  const text = `${"Unrelated reference text. ".repeat(600)}\n${quote}`;
+  const diagram = await readPageDiagram(
+    { title: "Queue worker", url: "https://example.test/", text },
+    {
+      async *stream() { yield ""; },
+      async decide({ prompt }) {
+        assert.ok(prompt.includes(quote));
+        return { nodes: ["Queue", "Worker"], connections: [{ from: 0, to: 1, label: "delivers jobs", evidence: quote }] };
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.match(diagram ?? "", /n0 -->\|delivers jobs\| n1/);
 });
 
 test("an unsupported page diagram gets one retry and leaves the walkthrough visible", async () => {

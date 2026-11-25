@@ -5,7 +5,7 @@ type Flowchart = {
 
 function diagramLabel(text: string, fallback: string): string {
   const label = text
-    .replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, " ")
+    .replace(/[^\p{L}\p{M}\p{N} ._+#/-]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   return label.replace(/\b(click|href) /gi, "$1-") || fallback;

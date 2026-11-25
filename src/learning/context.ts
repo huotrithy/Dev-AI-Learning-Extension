@@ -51,15 +51,14 @@ export function pageContext(
         : text.slice(0, budget),
     })) });
   }
-  const text = page.text;
-  const endpoint = new URL(page.url);
+  return JSON.stringify(pageTextContext(page, length, question));
+}
+
+export function pageTextContext({ title, url: pageUrl, text }: Pick<PageSource, "title" | "url" | "text">, length: number, question: string) {
+  const endpoint = new URL(pageUrl);
   const url = `${endpoint.origin}${endpoint.pathname}`;
   if (text.length <= length || !question) {
-    return JSON.stringify({
-      title: page.title,
-      url,
-      text: text.slice(0, length),
-    });
+    return { title, url, text: text.slice(0, length) };
   }
 
   const terms = new Set(question.toLowerCase().match(searchTermsPattern) ?? []);
@@ -67,7 +66,7 @@ export function pageContext(
     const normalized = chunk.toLowerCase();
     return [...terms].filter(term => normalized.includes(term)).length;
   });
-  return JSON.stringify({ title: page.title, url, excerpts });
+  return { title, url, excerpts };
 }
 
 function rankedExcerpts(text: string, length: number, chunkLength: number, score: (chunk: string) => number): string[] {
