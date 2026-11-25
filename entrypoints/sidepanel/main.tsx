@@ -26,6 +26,7 @@ import {
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
 import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
+import { ChatTurn } from "./ChatTurn.tsx";
 import { CodeSnippet } from "./CodeSnippet.tsx";
 import { ReaderActivity } from "./ReaderActivity.tsx";
 import {
@@ -610,8 +611,7 @@ function App() {
               );
             })}
             {reader.chat.map(({ question, answer, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
-              <section className="chat-turn" key={index}>
-                <h2>{question}</h2>
+              <ChatTurn key={index} question={question}>
                 <ReaderActivity steps={activity} />
                 {answer
                   ? (
@@ -653,7 +653,7 @@ function App() {
                     </ul>
                   </details>
                 )}
-              </section>
+              </ChatTurn>
             ))}
           </>
         )}

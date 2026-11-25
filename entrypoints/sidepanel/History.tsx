@@ -5,6 +5,8 @@ import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
 import { chatHistory, historyRetentionDays, type SavedConversation } from "../../src/learning/history.ts";
 
+import { ChatTurn } from "./ChatTurn.tsx";
+
 const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export function History({ renderAnswer }: { renderAnswer: (text: string) => ReactNode }) {
@@ -72,10 +74,9 @@ export function History({ renderAnswer }: { renderAnswer: (text: string) => Reac
                           </summary>
                           <div className="mt-3 grid gap-3">
                             {turns.map(({ id: turnId, question, answer }) => (
-                              <section className="chat-turn" key={turnId}>
-                                <h3 className="whitespace-pre-wrap font-semibold">{question}</h3>
+                              <ChatTurn key={turnId} question={question} heading="h3">
                                 {renderAnswer(answer)}
-                              </section>
+                              </ChatTurn>
                             ))}
                           </div>
                         </details>

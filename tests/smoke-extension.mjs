@@ -316,6 +316,17 @@ try {
   assert.deepEqual(serviceTokens.at(-1), ["fixture-id", "fixture-secret"], "The worker sends the saved Cloudflare headers");
   await checkNarrowLayout("Read with a reply");
   await sendPanel("Emulation.setDeviceMetricsOverride", { width: 1130, height: 900, deviceScaleFactor: 1, mobile: false });
+  assert.deepEqual(await evaluate(`(() => {
+    const turn = document.querySelector('.chat-turn');
+    const question = turn.querySelector('.chat-message-user');
+    const reply = turn.querySelector('.chat-message-assistant');
+    if (!question || !reply) return null;
+    return {
+      roles: [...turn.querySelectorAll('.chat-message-label')].map(label => label.textContent.trim()),
+      distinctBackgrounds: getComputedStyle(question).backgroundColor !== getComputedStyle(reply).backgroundColor,
+      questionAlignedRight: question.getBoundingClientRect().left > reply.getBoundingClientRect().left,
+    };
+  })()`), { roles: ["You", "AI"], distinctBackgrounds: true, questionAlignedRight: true }, "Questions and replies are labeled and visually distinct");
   const readingLayout = await evaluate(`(async () => {
     const paragraph = document.querySelector('.chat-turn .prose p');
     const style = getComputedStyle(paragraph);
@@ -579,6 +590,8 @@ try {
   await reopened.getByRole("button", { name: "History", exact: true }).click();
   await reopened.locator("summary").filter({ hasText: "Queue acknowledgments" }).click();
   await reopened.getByRole("heading", { name: "What does the broker track?" }).waitFor();
+  const savedTurn = reopened.locator(".chat-turn").filter({ has: reopened.getByRole("heading", { name: "What does the broker track?" }) });
+  assert.deepEqual(await savedTurn.locator(".chat-message-label").allTextContents(), ["You", "AI"], "Saved turns keep the speaker labels");
   assert.deepEqual(await reopened.getByRole("table").getByRole("cell").allTextContents(), ["ACK", "Job finished"], "Saved replies retain their Markdown tables");
   await reopened.getByRole("button", { name: "Clear history", exact: true }).click();
   await reopened.getByRole("button", { name: "Clear all", exact: true }).click();
