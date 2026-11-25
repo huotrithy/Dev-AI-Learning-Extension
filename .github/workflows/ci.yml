@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
       - name: Lint (advisory)
         id: lint
         # Remove this once the existing ESLint violations are fixed.
