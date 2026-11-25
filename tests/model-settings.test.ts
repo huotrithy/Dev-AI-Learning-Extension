@@ -95,6 +95,35 @@ void test("a decision profile cannot become the explanation model", () => {
   assert.equal(remaining.system, decision.id);
 });
 
+void test("an OpenAI decision profile keeps its credentials and can be assigned to System 1", () => {
+  const openAi = { ...profile, provider: "openai" as const };
+  const settings = { ...stored, profiles: [openAi] };
+  const [visible] = publicModelSettings(settings).profiles;
+  assert.ok(visible);
+  const updated = applyModelSettingsCommand(settings, {
+    type: "save-profile",
+    profile: { ...visible, type: "decision", customHeaders: [{ name: headerName, savedIndex: 0 }] },
+  });
+  assert.equal(publicModelSettings(updated).profiles[0]?.type, "decision");
+  const [saved] = updated.profiles;
+  assert.ok(saved);
+  assert.equal(saved.key, openAi.key);
+  assert.deepEqual(saved.customHeaders, openAi.customHeaders);
+  assert.equal(updated.main, "");
+  assert.equal(applyModelSettingsCommand(updated, { type: "assign-profile", role: "system", id: openAi.id }).system, openAi.id);
+  assert.throws(() => applyModelSettingsCommand(updated, { type: "assign-profile", role: "main", id: openAi.id }), /select a chat profile/i);
+});
+
+void test("a compatible profile cannot save FreeLLM's decision endpoint as a chat destination", () => {
+  const chat = { ...createProfile(), label: "Chat", model: "auto", endpoint: "https://example.test/v1", customHeaders: [] };
+  for (const destination of [
+    { ...chat, chatEndpoint: `${chat.endpoint}/decisions` },
+    { ...chat, endpoint: `${chat.endpoint}/systemone/` },
+  ]) {
+    assert.throws(() => applyModelSettingsCommand(stored, { type: "save-profile", profile: destination }), /FreeLLM Decision API/);
+  }
+});
+
 void test("an exact chat URL cannot hide credentials in a saved base URL", () => {
   const chat = { ...createProfile(), label: "Chat", model: "fixture", endpoint: "https://example.test/v1?token=fixture", chatEndpoint: "https://example.test/generate" };
   assert.throws(() => applyModelSettingsCommand(stored, {

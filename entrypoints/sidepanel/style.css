@@ -255,6 +255,16 @@ main {
 .chat-message-assistant {
   border-top-left-radius: 3px;
 }
+.answer-feedback {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  font-size: 0.85rem;
+}
+.answer-feedback [role="status"]:empty {
+  position: absolute;
+}
 .chat-message-label {
   color: var(--muted-foreground);
   font-size: 0.85rem;

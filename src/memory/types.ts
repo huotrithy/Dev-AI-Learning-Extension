@@ -3,13 +3,15 @@ import { z } from "zod";
 export const options = {
   "example-language": ["typescript", "javascript", "python", "go", "rust", "java", "csharp", "sql", "shell"],
   "example-placement": ["example first", "concept first"],
-  "depth": ["concise", "detailed"],
+  "example-frequency": ["include examples"],
+  "depth": ["concise", "detailed", "plain language"],
   "intent": ["failure modes", "trade-offs", "implementation", "real-world use", "performance", "comparison", "prerequisites"],
 } as const;
 
 export const choiceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("example-language"), value: z.enum(options["example-language"]) }),
   z.object({ kind: z.literal("example-placement"), value: z.enum(options["example-placement"]) }),
+  z.object({ kind: z.literal("example-frequency"), value: z.enum(options["example-frequency"]) }),
   z.object({ kind: z.literal("depth"), value: z.enum(options.depth) }),
   z.object({ kind: z.literal("intent"), value: z.enum(options.intent) }),
 ]);

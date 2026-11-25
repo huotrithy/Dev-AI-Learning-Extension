@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ArrowUp } from "lucide-react";
 import Markdown from "react-markdown";
@@ -26,6 +26,7 @@ import {
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
 import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
+import { AnswerFeedback } from "./AnswerFeedback.tsx";
 import { ChatTurn } from "./ChatTurn.tsx";
 import { CodeSnippet } from "./CodeSnippet.tsx";
 import { ReaderActivity } from "./ReaderActivity.tsx";
@@ -49,10 +50,10 @@ import {
   invalidateTab,
   learn,
   loadPage,
+  reviseAnswer,
   stopReading,
   useReader,
   watchMemoryChanges,
-  type ReaderSnapshot,
 } from "./reader.ts";
 import "./style.css";
 
@@ -123,7 +124,6 @@ function App() {
   const [sourceWindow, setSourceWindow] = useState(floatingSource);
   const [switchingWindow, setSwitchingWindow] = useState(false);
   const [displayError, setDisplayError] = useState("");
-  const lastHostname = useRef<string | undefined>(undefined);
   const { question } = reader;
   const repo = reader.page && githubRepository(reader.page.url);
   const repository = reader.page?.repository;
@@ -136,34 +136,6 @@ function App() {
   const learnLabel = reader.sections.intro
     ? "Explain again"
     : youtube ? "Learn this video" : repo ? "Learn this repo" : "Learn this page";
-
-  const loadActivePage = useCallback((windowId: number, restore?: ReaderSnapshot) => {
-    if (restore?.loadedSource && hasActiveChat(restore)) {
-      lastHostname.current = new URL(restore.loadedSource.url).hostname;
-    }
-    void loadPage(windowId, restore, (tab) => {
-      const url = new URL(tab.url || tab.pendingUrl || "about:blank");
-      const hostname = /^https?:$/.test(url.protocol) ? url.hostname : undefined;
-      if (lastHostname.current && hostname !== lastHostname.current) {
-        closeReader();
-        if (floating) {
-          window.close();
-        }
-        else {
-          const showCloseMessage = () => {
-            setDisplayError("The site changed. Close this sidebar and reopen the reader on the new tab.");
-          };
-          if (chrome.sidePanel.close)
-            void chrome.sidePanel.close({ windowId }).catch(showCloseMessage);
-          else showCloseMessage();
-        }
-        return false;
-      }
-      lastHostname.current = hostname;
-      setDisplayError("");
-      return true;
-    });
-  }, []);
 
   useEffect(() => {
     void updateModelSettings({ type: "load-settings" })
@@ -195,14 +167,14 @@ function App() {
         setView(handoff.view);
         setDisplayError("");
       }
-      loadActivePage(sourceWindow, handoff?.reader);
+      void loadPage(sourceWindow, handoff?.reader);
     });
     const activated: Parameters<
       typeof chrome.tabs.onActivated.addListener
     >[0] = (info) => {
       if (sourceWindow !== info.windowId || hasActiveChat(useReader.getState()))
         return;
-      loadActivePage(sourceWindow);
+      void loadPage(sourceWindow);
     };
     const updated: Parameters<typeof chrome.tabs.onUpdated.addListener>[0] = (
       tabId,
@@ -215,7 +187,7 @@ function App() {
       if (change.status === "loading")
         invalidateTab(tabId);
       else if (change.status === "complete" || (change.url && (!page || youtubeVideo(change.url)?.url !== page.url)))
-        loadActivePage(sourceWindow);
+        void loadPage(sourceWindow);
     };
     const accessGranted: Parameters<
       typeof chrome.runtime.onMessage.addListener
@@ -226,12 +198,12 @@ function App() {
         && message.tabId === tabId
         && !page
       ) {
-        loadActivePage(sourceWindow);
+        void loadPage(sourceWindow);
       }
     };
     const windowRemoved = (windowId: number) => {
       if (sourceWindow === windowId)
-        loadActivePage(sourceWindow);
+        void loadPage(sourceWindow);
     };
     chrome.tabs.onActivated.addListener(activated);
     chrome.tabs.onUpdated.addListener(updated);
@@ -246,13 +218,13 @@ function App() {
       unwatchMemory();
       closeReader();
     };
-  }, [sourceWindow, loadActivePage]);
+  }, [sourceWindow]);
 
   function refresh() {
     if (sourceWindow === undefined)
       return;
-    lastHostname.current = undefined;
-    loadActivePage(sourceWindow);
+    setDisplayError("");
+    void loadPage(sourceWindow);
   }
 
   async function changeDisplay() {
@@ -431,7 +403,7 @@ function App() {
                       <NativeSelect
                         id={depthId}
                         value={reader.depth}
-                        disabled={reader.working === "learn"}
+                        disabled={Boolean(reader.working)}
                         onChange={(event) => {
                           const depth = event.target.value as Depth;
                           useReader.setState({ depth });
@@ -607,6 +579,14 @@ function App() {
                             onSourceClick={video ? jumpToTimestamp : undefined}
                           />
                         )}
+                    {id === "intro" && reader.working !== "learn" && settings && profile && (
+                      <AnswerFeedback
+                        key={reader.session}
+                        style={reader.introStyle}
+                        disabled={Boolean(reader.working) || pendingDocsScope}
+                        revise={style => reviseAnswer("intro", style, settings)}
+                      />
+                    )}
                   </section>
                   {id === "intro" && repository && (
                     <RepositoryMap map={reader.architecture} pending={reader.working === "learn" && reader.architecture === undefined} />
@@ -614,8 +594,8 @@ function App() {
                 </Fragment>
               );
             })}
-            {reader.chat.map(({ question, answer, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
-              <ChatTurn key={index} question={question}>
+            {reader.chat.map(({ id, question, answer, style, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
+              <ChatTurn key={id ?? index} question={question}>
                 <ReaderActivity steps={activity} />
                 {answer
                   ? (
@@ -656,6 +636,13 @@ function App() {
                       ))}
                     </ul>
                   </details>
+                )}
+                {answer.trim() && settings && profile && (
+                  <AnswerFeedback
+                    style={style}
+                    disabled={Boolean(reader.working) || pendingDocsScope}
+                    revise={style => reviseAnswer(index, style, settings)}
+                  />
                 )}
               </ChatTurn>
             ))}

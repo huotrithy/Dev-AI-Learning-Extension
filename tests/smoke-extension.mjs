@@ -62,7 +62,13 @@ const server = createServer(async (request, response) => {
   }
 
   prompts.push({ system, prompt });
-  const content = system.includes("The repository tree is a sample")
+  const content = system.includes("Revise the answer in simpler language")
+    ? "A broker checks whether the worker finished the job."
+    : system.includes("Add a concrete example to the answer")
+      ? "For example, a worker sends an acknowledgment after sending an email."
+      : system.includes("Expand the answer with more detail")
+        ? " "
+        : system.includes("The repository tree is a sample")
     ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
     : prompt.includes("Question: How do I set max_concurrency?")
       ? `Set the [worker concurrency limit](http://127.0.0.1:${server.address().port}/third).`
@@ -168,10 +174,10 @@ try {
     return result.value;
   }
 
-  async function waitFor(text) {
+  async function waitFor(text, scope = "body") {
     let body;
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      body = await evaluate("document.body?.innerText");
+      body = await evaluate(`document.querySelector(${JSON.stringify(scope)})?.innerText`);
       if (body?.includes(text))
         return;
       await setTimeout(125);
@@ -196,9 +202,9 @@ try {
       document.documentElement.scrollWidth <= document.documentElement.clientWidth`), true, `${view} fits a 320-pixel sidebar`);
   }
 
-  async function click(text) {
+  async function click(text, scope = "body") {
     assert.equal(await evaluate(`(() => {
-      const button = [...document.querySelectorAll('button')].find((item) => (item.getAttribute('aria-label') ?? item.textContent.trim()) === ${JSON.stringify(text)});
+      const button = [...document.querySelector(${JSON.stringify(scope)}).querySelectorAll('button')].find((item) => (item.getAttribute('aria-label') ?? item.textContent.trim()) === ${JSON.stringify(text)});
       if (!button || button.disabled) return false;
       button.click(); return true;
     })()`), true, text);
@@ -363,7 +369,26 @@ try {
   await sendPanel("Emulation.setDeviceMetricsOverride", { width: 320, height: 720, deviceScaleFactor: 1, mobile: false });
   await waitFor("Explain again");
   await setTimeout(400);
+  await click("Simpler", ".chat-turn");
+  await waitFor("A broker checks whether the worker finished the job.", ".chat-turn");
+  assert.match(prompts.at(-1).prompt, /Previous answer:.*Acknowledgments let a broker track/);
+  await click("More detail", ".chat-turn");
+  await waitFor("Could not revise this answer.");
+  await waitFor("A broker checks whether the worker finished the job.", ".chat-turn");
   await click("Memory");
+  assert.equal(await evaluate("document.body.innerText.includes('Use plain language and keep explanations concise')"), false);
+  await click("Read");
+  await click("Remember this style", ".chat-turn");
+  await waitFor("Saved to Memory.");
+  await click("Show an example", ".learning-section.intro");
+  await waitFor("For example, a worker sends an acknowledgment after sending an email.", ".learning-section.intro");
+  await checkNarrowLayout("Read with answer controls");
+  await click("History");
+  await waitFor("Reliable work queues");
+  await evaluate("document.querySelectorAll('[aria-labelledby=history-heading] details').forEach(detail => { detail.open = true; })");
+  await waitFor("A broker checks whether the worker finished the job.", "[aria-labelledby=history-heading]");
+  await click("Memory");
+  await waitFor("Use plain language and keep explanations concise within the selected depth.");
   await waitFor("Why this was saved");
   await checkNarrowLayout("Memory");
   assert.equal(await evaluate(`(() => {
@@ -568,7 +593,7 @@ try {
   const { sameHostTab, otherHostTab } = await worker.evaluate(async (origin) => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     const sameHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin}/first` });
-    const otherHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin.replace("127.0.0.1", "localhost")}/first` });
+    const otherHost = await chrome.tabs.create({ windowId: tab.windowId, active: false, url: `${origin.replace("127.0.0.1", "localhost")}/third` });
     return { sameHostTab: sameHost.id, otherHostTab: otherHost.id };
   }, origin);
   const activate = tabId => worker.evaluate(id => chrome.tabs.update(id, { active: true }), tabId);
@@ -595,7 +620,20 @@ try {
   await floatingAgain.getByRole("button", { name: "Refresh page", exact: true }).click();
   await floatingAgain.getByRole("heading", { name: "Reliable work queues" }).waitFor();
   assert.equal(await floatingAgain.getByRole("heading", { name: "What does the broker track?" }).count(), 0);
-  await Promise.all([floatingAgain.waitForEvent("close", { timeout: 5_000 }), activate(otherHostTab)]);
+  await activate(otherHostTab);
+  await floatingAgain.getByRole("heading", { name: "Queue rate limits" }).waitFor();
+  await activate(articleTab);
+  await floatingAgain.getByRole("heading", { name: "Reliable work queues" }).waitFor();
+  await Promise.all([
+    floatingAgain.waitForEvent("close", { timeout: 10_000 }),
+    floatingAgain.getByRole("button", { name: "Dock to sidebar" }).click(),
+  ]);
+  panelTarget = (await targets()).targetInfos.find(({ url }) => url === sidebarUrl);
+  assert.ok(panelTarget, "Docking reopens the native side panel");
+  ({ sessionId } = await cdp.send("Target.attachToTarget", { targetId: panelTarget.targetId, flatten: false }));
+  await waitFor("Reliable work queues");
+  await activate(otherHostTab);
+  await waitFor("Queue rate limits");
 
   const reopened = await context.newPage();
   await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -634,7 +672,11 @@ try {
   assert.equal(await reopened.getByLabel("Chat endpoint URL (optional)", { exact: true }).inputValue(), `${modelEndpoint}/chat/completions`);
   await reopened.keyboard.press("Escape");
   await reopened.getByRole("button", { name: "Add profile", exact: true }).click();
-  await reopened.getByLabel("Provider", { exact: true }).selectOption({ label: "FreeLLM Decision API" });
+  await reopened.getByLabel("Provider", { exact: true }).selectOption({ label: "OpenAI" });
+  await reopened.getByLabel("Type", { exact: true }).selectOption({ label: "Decision" });
+  assert.equal(await reopened.getByLabel("Decision endpoint URL", { exact: true }).count(), 0);
+  await reopened.getByLabel("Provider", { exact: true }).selectOption({ label: "FreeLLM" });
+  assert.equal(await reopened.getByLabel("Type", { exact: true }).inputValue(), "decision");
   await reopened.getByLabel("Profile name", { exact: true }).fill("Decision fixture");
   await reopened.getByLabel("Decision endpoint URL", { exact: true }).fill(`${modelEndpoint}/decisions`);
   assert.equal(await reopened.getByLabel("Model ID", { exact: true }).inputValue(), "auto");

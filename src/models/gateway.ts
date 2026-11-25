@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, streamText, tool, type LanguageModel } from "ai";
 import { z } from "zod";
-import { modelHeaders, modelRequestEndpoint, type ModelProfile } from "./profiles.ts";
+import { modelHeaders, modelRequestEndpoint, type ModelProfile, usesCompatibleChat } from "./profiles.ts";
 
 export interface ModelRequest {
   system: string;
@@ -55,7 +55,7 @@ export async function decideWithFallback<T>(
 function createModel(profile: ModelProfile): LanguageModel {
   const { key, model, provider } = profile;
   const customHeaders = modelHeaders(profile);
-  const exactEndpoint = provider === "compatible" && profile.chatEndpoint ? modelRequestEndpoint(profile).href : undefined;
+  const exactEndpoint = usesCompatibleChat(profile) && profile.chatEndpoint ? modelRequestEndpoint(profile).href : undefined;
   const providerFetch: typeof fetch = (input, init) => {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     customHeaders.forEach((value, name) => headers.set(name, value));

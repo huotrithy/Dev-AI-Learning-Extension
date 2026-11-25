@@ -1,6 +1,8 @@
-export const decisionProvider = "freellm-decisions";
-export const providers = ["compatible", "openai", "anthropic", decisionProvider] as const;
+export const freeLlmProvider = "freellm-decisions";
+export const providers = ["compatible", "openai", "anthropic", freeLlmProvider] as const;
 export type Provider = typeof providers[number];
+export const profileTypes = ["chat", "decision"] as const;
+export type ProfileType = typeof profileTypes[number];
 
 export interface ModelHeader {
   name: string;
@@ -11,6 +13,7 @@ export interface ModelProfileDetails {
   id: string;
   label: string;
   provider: Provider;
+  type?: ProfileType;
   model: string;
   endpoint: string;
   chatEndpoint?: string;
@@ -44,6 +47,20 @@ export interface ModelSettings {
 
 export const defaultSettings = { profiles: [], main: "", system: "" };
 
+type ProfileKind = Pick<ModelProfileDetails, "provider" | "type">;
+
+export function profileType(profile: ProfileKind): ProfileType {
+  return profile.type ?? (profile.provider === freeLlmProvider ? "decision" : "chat");
+}
+
+export function isNativeDecision(profile: ProfileKind): boolean {
+  return profile.provider === freeLlmProvider && profileType(profile) === "decision";
+}
+
+export function usesCompatibleChat(profile: ProfileKind): boolean {
+  return profile.provider === "compatible" || (profile.provider === freeLlmProvider && !isNativeDecision(profile));
+}
+
 export function createProfileDetails(): ModelProfileDetails {
   return {
     id: crypto.randomUUID(),
@@ -65,7 +82,7 @@ export function modelEndpoint(profile: ModelProfileDetails): URL {
     return new URL("https://api.openai.com/v1");
   if (profile.provider === "anthropic")
     return new URL("https://api.anthropic.com/v1");
-  const url = profile.provider === "compatible" && profile.chatEndpoint ? profile.chatEndpoint : profile.endpoint;
+  const url = usesCompatibleChat(profile) && profile.chatEndpoint ? profile.chatEndpoint : profile.endpoint;
   const endpoint = new URL(url);
   if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new Error("Enter an HTTP or HTTPS URL without credentials, a query, or a fragment.");
@@ -105,8 +122,16 @@ export class InsecureModelEndpointError extends Error {
   }
 }
 
+export class DecisionEndpointAsChatError extends Error {
+  constructor() {
+    super("For the FreeLLM Decision API, select FreeLLM as Provider and Decision as Type. For chat, use the FreeLLM base URL ending in /v1 or its full /v1/chat/completions URL.");
+  }
+}
+
 export function modelRequestEndpoint(profile: ModelProfile): URL {
   const endpoint = modelEndpoint(profile);
+  if (usesCompatibleChat(profile) && /\/v1\/(?:decisions|systemone)\/*$/.test(endpoint.pathname))
+    throw new DecisionEndpointAsChatError();
   if (profile.key && isRemoteHttp(endpoint))
     throw new InsecureModelEndpointError();
   return endpoint;

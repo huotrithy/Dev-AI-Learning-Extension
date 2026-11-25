@@ -16,12 +16,16 @@ const names: Record<string, string> = {
 export function choiceLabel(kind: Observation["kind"], value: string): string {
   if (kind === "example-language")
     return `Use ${names[value] ?? value} examples where relevant.`;
+  if (kind === "example-frequency")
+    return "Include a concrete example where it helps.";
   if (kind === "example-placement") {
     return value === "example first"
       ? "Start the opening explanation with a concrete example."
       : "Start by explaining the concept, then give an example.";
   }
   if (kind === "depth") {
+    if (value === "plain language")
+      return "Use plain language and keep explanations concise within the selected depth.";
     return value === "concise"
       ? "Favor concise explanations within the selected depth."
       : "Give concrete detail within the selected depth.";

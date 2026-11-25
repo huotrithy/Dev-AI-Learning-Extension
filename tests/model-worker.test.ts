@@ -1,9 +1,16 @@
+import type { TestContext } from "node:test";
+
 import assert from "node:assert/strict";
-import test, { type TestContext } from "node:test";
+import test from "node:test";
+
+import type { ActivityStep } from "../src/learning/activity.ts";
+import type { ModelProfile } from "../src/models/profiles.ts";
+
+import { createActivity, trackModelActivity } from "../src/learning/activity.ts";
 import { decisionSchemas } from "../src/models/decision-schemas.ts";
-import { createProfile, type ModelProfile } from "../src/models/profiles.ts";
-import { serveModelPort } from "../src/models/worker.ts";
+import { createProfile } from "../src/models/profiles.ts";
 import { createWorkerGateway, ModelProfileChangedError } from "../src/models/worker-client.ts";
+import { serveModelPort } from "../src/models/worker.ts";
 
 const profile = {
   ...createProfile(),
@@ -187,6 +194,64 @@ void test("the worker sends native classification to FreeLLM and uses chat for g
   assert.equal(requests[0]?.body.model, "auto");
   assert.deepEqual(Object.keys(requests[0]?.body.questions as object), ["sourceType", "diagram"]);
   assert.equal("messages" in requests[0].body, false);
+});
+
+void test("an OpenAI decision profile classifies through Chat Completions", async (t) => {
+  const system = { ...profile, id: "openai-decision", provider: "openai" as const, type: "decision" as const, customHeaders: [], key: "fixture-key" };
+  connectWorker(t, [profile, system]);
+  const fetch = t.mock.method(globalThis, "fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(String(input), "https://api.openai.com/v1/chat/completions");
+    const body = JSON.parse(String(init?.body)) as { messages?: unknown[] };
+    assert.ok(body.messages?.length);
+    return Response.json({
+      id: "fixture",
+      model: "fixture",
+      created: 0,
+      choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ sourceType: "paper", diagram: false }) }, finish_reason: "stop" }],
+    });
+  });
+  const gateway = createWorkerGateway(profile, system);
+  const signal = new AbortController().signal;
+  assert.deepEqual(await gateway.decide(request, decisionSchemas.route, signal), { sourceType: "paper", diagram: false });
+  assert.equal(fetch.mock.callCount(), 1);
+});
+
+void test("FreeLLM classification exposes safe failure details in Activity", async (t) => {
+  const system = { ...profile, id: "clef", provider: "freellm-decisions" as const, model: "auto", endpoint: "https://decision.test/v1/decisions" };
+  connectWorker(t, [profile, system]);
+  const responses = [
+    Response.json({ error: { code: "no_decision_keys", message: "private provider response" } }, { status: 503 }),
+    new Response("private proxy response", { status: 404 }),
+    Response.json({ answers: {} }),
+  ];
+  t.mock.method(globalThis, "fetch", async () => responses.shift()!);
+  const signal = new AbortController().signal;
+  let steps: ActivityStep[] = [];
+  const activity = createActivity(signal, (next) => {
+    steps = next;
+  });
+  const gateway = trackModelActivity(createWorkerGateway(profile, system), activity, { main: profile.model, system: system.model });
+  for (const expected of [/Cloudflare or OpenRouter key/, /HTTP 404/, /invalid classification/])
+    await assert.rejects(gateway.decide(request, decisionSchemas.route, signal), expected);
+  assert.deepEqual(steps.map(({ status }) => status), ["error", "error", "error"]);
+  assert.match(steps[0]?.detail ?? "", /Cloudflare or OpenRouter key/);
+  assert.match(steps[1]?.detail ?? "", /HTTP 404/);
+  assert.doesNotMatch(JSON.stringify(steps), /private|decision\.test/);
+});
+
+void test("a saved chat profile pointing to FreeLLM decisions fails before sending the architecture prompt", async (t) => {
+  const chat = { ...profile, chatEndpoint: "https://example.test/v1/decisions" };
+  connectWorker(t, [chat]);
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({}, { status: 400 }));
+  const signal = new AbortController().signal;
+  let steps: ActivityStep[] = [];
+  const activity = createActivity(signal, (next) => {
+    steps = next;
+  });
+  const gateway = trackModelActivity(createWorkerGateway(chat, chat), activity, { main: chat.model, system: chat.model });
+  await assert.rejects(gateway.decide(request, decisionSchemas.architecture, signal), /FreeLLM Decision API/);
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.match(steps[0]?.detail ?? "", /FreeLLM Decision API/);
 });
 
 void test("a stale reader cannot send to a changed exact chat URL", async (t) => {
