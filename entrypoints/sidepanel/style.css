@@ -168,11 +168,24 @@ main {
 }
 .source {
   display: grid;
+  min-width: 0;
   gap: 10px;
   padding-block: 2px 8px;
 }
+.source-heading {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.source-heading h1 {
+  max-inline-size: 52ch;
+  font-size: clamp(1.25rem, 1.1rem + 0.65vw, 1.65rem);
+  text-wrap: balance;
+}
 .source-meta,
 .read-actions,
+.read-options,
 .button-row {
   display: flex;
   align-items: center;
@@ -186,9 +199,16 @@ main {
 .source-meta a {
   overflow-wrap: anywhere;
 }
-.read-actions {
+.read-actions,
+.read-options {
   align-items: end;
-  justify-content: space-between;
+}
+.read-options {
+  gap: 8px 16px;
+  min-width: 0;
+}
+.read-actions > button {
+  margin-inline-start: auto;
 }
 .related-docs-option {
   display: flex;
@@ -443,10 +463,12 @@ blockquote {
 }
 .composer-card {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px;
   max-width: var(--panel-content-width);
   margin-inline: auto;
-  padding: 6px 8px 8px;
+  padding: 5px 6px;
   border: 1px solid var(--input);
   border-radius: 18px;
   background: var(--card);
@@ -457,8 +479,8 @@ blockquote {
   outline-offset: 1px;
 }
 .composer-card textarea {
-  min-height: min(calc(3em + 12px), 23dvh);
-  max-height: min(30dvh, 14rem);
+  min-height: 0;
+  max-height: min(25dvh, 10rem);
   padding: 6px 8px;
   border: 0;
   background: transparent;
