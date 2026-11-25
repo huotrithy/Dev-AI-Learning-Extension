@@ -653,6 +653,26 @@ try {
   const savedTurn = reopened.locator(".chat-turn").filter({ has: reopened.getByRole("heading", { name: "What does the broker track?" }) });
   assert.deepEqual(await savedTurn.locator(".chat-message-label").allTextContents(), ["You", "AI"], "Saved turns keep the speaker labels");
   assert.deepEqual(await reopened.getByRole("table").getByRole("cell").allTextContents(), ["ACK", "Job finished"], "Saved replies retain their Markdown tables");
+  assert.ok(context.pages().every(page => page.url() !== `${origin}/second`), "The original source is no longer open");
+  const callsBeforeResume = prompts.length;
+  const savedConversation = reopened.getByRole("listitem").filter({ has: reopened.locator("summary").filter({ hasText: "Queue acknowledgments" }) });
+  await savedConversation.getByRole("button", { name: "Resume conversation" }).click();
+  await reopened.getByRole("heading", { name: "Queue acknowledgments", exact: true }).waitFor();
+  await reopened.getByRole("heading", { name: "What does the broker track?" }).waitFor();
+  assert.equal(prompts.length, callsBeforeResume, "Resuming does not call a model");
+  await reopened.locator("#question").fill("What if it never gets one?");
+  await reopened.getByRole("button", { name: "Send question" }).click();
+  await reopened.getByRole("heading", { name: "What if it never gets one?" }).waitFor();
+  await reopened.getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });
+  assert.ok(prompts.slice(callsBeforeResume).some(({ prompt }) =>
+    prompt.includes("Question: What if it never gets one?")
+    && prompt.includes("What does the broker track?")
+    && prompt.includes("Jobs are acknowledged after processing.")),
+  "A resumed follow-up uses the archived turns and original page text");
+  await reopened.getByRole("button", { name: "History", exact: true }).click();
+  await reopened.locator("summary").filter({ hasText: "Queue acknowledgments" }).click();
+  await reopened.getByRole("heading", { name: "What if it never gets one?" }).waitFor();
+  assert.equal(await reopened.locator("summary").filter({ hasText: "Queue acknowledgments" }).count(), 1);
   await reopened.getByRole("button", { name: "Clear history", exact: true }).click();
   await reopened.getByRole("button", { name: "Clear all", exact: true }).click();
   await reopened.getByText("No saved conversations yet.").waitFor();
@@ -735,7 +755,7 @@ try {
   await waitForAnswer("Where is startReader called?", "Fixture architecture uses");
   assert.ok(prompts.some(({ prompt }) => prompt.includes("Question: Where is startReader called?") && prompt.includes(repoFile)));
   await client.close();
-  console.log("Browser smoke passed: reader windows, appearance, settings, page and docs scopes, chat, memory, diagrams, and GitHub Repo Mode.");
+  console.log("Browser smoke passed: reader windows, appearance, settings, page and docs scopes, chat and history resume, memory, diagrams, and GitHub Repo Mode.");
 }
 finally {
   await context?.close();

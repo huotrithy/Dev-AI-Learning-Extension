@@ -46,7 +46,9 @@ Keep the gateway running while you use the extension. When the gateway routes to
 
 ## Conversation history
 
-Open **History** to review completed questions and answers by reading session. Each reply stays available in this browser for 30 days. Use **Clear history** to delete the archive at any time. The archive is for browsing, and follow-up questions use the active chat for context.
+Open **History**, expand a conversation, and choose **Resume conversation** to continue in **Read**, even after closing the original tab. The reader restores the captured source, explanation, and saved replies. Conversations saved before this feature remain available to read in History.
+
+Completed replies stay in this browser for 30 days. The captured source stays while its latest saved reply is retained. **Clear history** deletes the archive, including its source snapshots. When you send a follow-up, the selected model receives relevant excerpts and recent turns.
 
 ## Personalize it
 
@@ -89,3 +91,5 @@ The browser test opens the native side panel on a local fixture page and uses a 
 ## Sidebar components
 
 Reuse the shadcn/ui components in `src/components/ui`. The root `components.json` configures the Base UI Nova registry and the sidebar theme.
+
+See the [roadmap](docs/ROADMAP.md) for upcoming features.
