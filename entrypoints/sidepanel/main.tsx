@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { createRoot } from "react-dom/client";
 import { ArrowUp } from "lucide-react";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
 import { Checkbox } from "@/src/components/ui/checkbox";
@@ -67,6 +68,7 @@ function Prose({ text, sources, onSourceClick }: {
     <div className="prose">
       <Markdown
         skipHtml
+        remarkPlugins={[remarkGfm]}
         components={{
           a: ({ children, href }) => href && sources?.some(source => source.url === href)
             ? (
@@ -87,6 +89,11 @@ function Prose({ text, sources, onSourceClick }: {
               )
             : <span>{children}</span>,
           img: () => null,
+          table: ({ children }) => (
+            <div className="markdown-table">
+              <table>{children}</table>
+            </div>
+          ),
           pre: ({ node, children }) => {
             const code = node?.children[0];
             if (code?.type !== "element" || code.tagName !== "code")

@@ -50,7 +50,10 @@ const server = createServer(async (request, response) => {
     ? "flowchart LR\nA[Broker] --> B[Worker]"
     : system.includes("The repository tree is a sample")
       ? `Fixture architecture uses [the entry point](${repoFile}). [Invented source](https://example.org/invented)`
-      : "Acknowledgments let a broker track whether a job finished.";
+      : `Acknowledgments let a broker track whether a job finished.${
+        prompt.includes("What does the broker track?")
+          ? "\n\n| Item | Meaning |\n| --- | --- |\n| ACK | Job finished |"
+          : ""}`;
   response.writeHead(200, { "content-type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`);
   response.end(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
@@ -385,7 +388,10 @@ try {
   await waitFor("Appearance");
   await waitFor("Model settings");
   await checkNarrowLayout("Settings");
-  await select("Edit profile", "new");
+  assert.equal(await evaluate("document.querySelector('dialog[open]') === null"), true, "Profile fields start outside the settings flow");
+  await click("Add profile");
+  assert.equal(await evaluate("document.querySelector('dialog[open] #profile-name') !== null"), true, "Profile creation opens a modal");
+  await checkNarrowLayout("Profile editor");
   assert.deepEqual(await evaluate(`['profile-name', 'model-id'].map((id) => document.getElementById(id).value)`), ["", ""]);
   await select("Provider", "anthropic");
   assert.equal(await evaluate("document.querySelector(\"#base-url\") === null"), true, "Hosted profiles hide the base URL field");
@@ -399,19 +405,28 @@ try {
   })()`);
   await click("Save profile");
   await waitFor("Enter an API key for this provider.");
-  await select("Edit profile", "fixture");
+  await click("Cancel");
+  assert.equal(await evaluate("document.querySelector('dialog[open]') === null"), true, "Cancel closes the profile modal");
+  await click("Edit Fixture");
   await waitFor("Base URL");
   assert.equal(await evaluate("document.querySelector(\"#profile-name\").value"), "Fixture");
   await waitFor("Key saved");
   assert.equal(await evaluate("document.querySelector(\"#header-value-1\").value"), "");
   await evaluate(`(() => {
+    const label = document.querySelector('#profile-name');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(label, 'Updated fixture');
+    label.dispatchEvent(new Event('input', { bubbles: true }));
     const field = document.querySelector('#header-value-1');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, 'rotated-fixture-secret');
     field.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-  await click("Save profile");
+  await click("Save changes");
   await waitFor("Profile saved.");
+  assert.equal(await evaluate("document.querySelector('dialog[open]') === null"), true, "Saving closes the editor");
+  await click("Edit Updated fixture");
+  assert.equal(await evaluate("document.querySelector('#profile-name').value"), "Updated fixture", "The saved profile is editable");
   assert.equal(await evaluate("document.querySelector(\"#header-value-1\").value"), "");
+  await click("Cancel");
   await select("Theme", "dark");
   await select("Font", "serif");
   async function enterTextSize(value) {
@@ -458,6 +473,10 @@ try {
   })()`);
   await click("Send question");
   await waitForAnswer("What does the broker track?", "Acknowledgments let a broker track");
+  await waitForAnswer("What does the broker track?", "Job finished");
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll(".chat-turn table th, .chat-turn table td")]
+    .map(cell => cell.textContent)`), ["Item", "Meaning", "ACK", "Job finished"], "Markdown reply tables render as header and body cells");
+  await checkNarrowLayout("Read with a reply table");
   assert.deepEqual(serviceTokens.at(-1), ["fixture-id", "rotated-fixture-secret"], "Replacing a header leaves other credentials intact");
   const draft = "Draft follows the reader\nwith more context";
   await evaluate(`(() => {
@@ -532,14 +551,19 @@ try {
   const reopened = await context.newPage();
   await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await reopened.getByRole("button", { name: "Settings" }).click();
+  await reopened.getByRole("button", { name: "Edit Updated fixture", exact: true }).click();
   await reopened.getByText("Key saved", { exact: true }).waitFor();
   assert.equal(await reopened.locator("#api-key").inputValue(), "", "The saved key is absent from the form");
   assert.equal(await reopened.locator("#header-name-1").inputValue(), "CF-Access-Client-Secret");
   assert.equal(await reopened.locator("#header-value-1").inputValue(), "", "The saved service token is absent from the form");
-  assert.deepEqual(await Promise.all(["Theme", "Font", "Text size (px)", "Edit profile"].map(label => reopened.getByLabel(label, { exact: true }).inputValue())), ["dark", "serif", "23", "fixture"]);
+  await reopened.keyboard.press("Escape");
+  await reopened.getByRole("dialog").waitFor({ state: "hidden" });
+  assert.equal(await reopened.getByRole("button", { name: "Edit Updated fixture", exact: true }).evaluate(button => button === document.activeElement), true, "Escape returns focus to the Edit button");
+  assert.deepEqual(await Promise.all(["Theme", "Font", "Text size (px)", "Explanation model", "System 1 model"].map(label => reopened.getByLabel(label, { exact: true }).inputValue())), ["dark", "serif", "23", "fixture", "fixture"]);
   await reopened.getByRole("button", { name: "History", exact: true }).click();
   await reopened.locator("summary").filter({ hasText: "Queue acknowledgments" }).click();
   await reopened.getByRole("heading", { name: "What does the broker track?" }).waitFor();
+  assert.deepEqual(await reopened.getByRole("table").getByRole("cell").allTextContents(), ["ACK", "Job finished"], "Saved replies retain their Markdown tables");
   await reopened.getByRole("button", { name: "Clear history", exact: true }).click();
   await reopened.getByRole("button", { name: "Clear all", exact: true }).click();
   await reopened.getByText("No saved conversations yet.").waitFor();

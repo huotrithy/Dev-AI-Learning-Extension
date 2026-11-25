@@ -255,6 +255,24 @@ main {
 .prose li + li {
   margin-top: 0.35em;
 }
+.markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.markdown-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown-table th,
+.markdown-table td {
+  padding: 0.35em 0.6em;
+  border: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+.markdown-table thead {
+  background: var(--muted);
+}
 code,
 pre {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -314,6 +332,42 @@ pre:not([data-slot="code-block-content"]) {
 .form-grid {
   display: grid;
   gap: 10px;
+}
+.model-profile-list {
+  display: grid;
+  gap: 8px;
+}
+.model-profile-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.model-profile-list strong,
+.model-profile-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.model-profile-dialog {
+  width: min(calc(100vw - 24px), 32rem);
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--panel-gutter);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--card);
+}
+.model-profile-dialog::backdrop {
+  background: rgb(8 18 24 / 60%);
+}
+.model-profile-dialog p {
+  overflow-wrap: anywhere;
 }
 .appearance-fields {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));

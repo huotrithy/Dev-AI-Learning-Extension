@@ -12,7 +12,7 @@ A Chrome side panel for learning technical pages with your own model. It streams
    pnpm run build
    ```
 
-3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, choose a provider, give the profile a name, and enter the model ID and credentials from your provider. For an **OpenAI-compatible** provider, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
+3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, click **Add profile**, choose a provider, give the profile a name, and enter the model ID and credentials from your provider. For an **OpenAI-compatible** provider, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
 4. Return to **Read** and select **Learn this page**. Click the toolbar icon on a new tab when it needs page access.
 
 Expand **Activity** to see source reads, model calls, and fallbacks for an explanation or answer. Code snippets have line numbers and controls for wrapping and copying.
@@ -27,7 +27,7 @@ An open chat or unsent draft stays with its original page when you switch tabs o
 
 1. Run the [Windows desktop app](https://apps.microsoft.com/detail/9PBN6G8K2B7F), or use the [Docker or Node.js setup](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/install/01-install.md) on your computer or a separate server.
 2. Open the FreeLLMAPI dashboard, add at least one upstream provider key under **Keys**, and copy the **unified API key**. The desktop app also offers **Copy Key** in its tray menu.
-3. In the extension, open **Settings** → **Model settings** and create a profile with these values.
+3. In the extension, open **Settings** → **Model settings** and click **Add profile**. Enter these values in the modal.
 
    | Field                                     | Value                                                                                                                                                                                                    |
    | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
