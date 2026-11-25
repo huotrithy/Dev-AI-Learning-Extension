@@ -1,5 +1,6 @@
 import { decisionSchemas } from "../models/decision-schemas.ts";
 import type { ModelGateway } from "../models/gateway.ts";
+import type { DocsReference } from "../page/docs.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile } from "../page/github.ts";
 import type { ActivityStep } from "./activity.ts";
@@ -14,6 +15,7 @@ export type LearningEvent
 export interface ChatTurn {
   question: string;
   answer: string;
+  docsReferences?: DocsReference[];
   repositoryFiles?: Pick<RepositoryFile, "path" | "url">[];
   repositoryNotice?: string;
   activity?: ActivityStep[];

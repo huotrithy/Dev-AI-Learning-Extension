@@ -1,6 +1,6 @@
 import type { PageSource } from "../page/extract.ts";
 
-import { docsPageUrl } from "../page/docs.ts";
+import { docsPageUrl, docsSearchTerms } from "../page/docs.ts";
 import { videoContext } from "../page/youtube.ts";
 
 const minimumTermLength = 4;
@@ -41,11 +41,13 @@ export function pageContext(
   if (page.docs) {
     const sources = [page, ...page.docs];
     const budget = Math.floor(length / sources.length);
+    const terms = new Set(docsSearchTerms(question));
+    const score = (chunk: string) => new Set(docsSearchTerms(chunk).filter(term => terms.has(term))).size;
     return JSON.stringify({ pages: sources.map(({ title, url, text }) => ({
       title,
       url: docsPageUrl(url),
-      text: question && text.length > budget && budget >= docsChunkCharacters
-        ? rankedExcerpts(text, question, budget, docsChunkCharacters).join("\n\n")
+      text: terms.size > 0 && text.length > budget && budget >= docsChunkCharacters
+        ? rankedExcerpts(text, budget, docsChunkCharacters, score).join("\n\n")
         : text.slice(0, budget),
     })) });
   }
@@ -60,18 +62,20 @@ export function pageContext(
     });
   }
 
-  return JSON.stringify({ title: page.title, url, excerpts: rankedExcerpts(text, question, length, pageChunkCharacters) });
+  const terms = new Set(question.toLowerCase().match(searchTermsPattern) ?? []);
+  const excerpts = rankedExcerpts(text, length, pageChunkCharacters, (chunk) => {
+    const normalized = chunk.toLowerCase();
+    return [...terms].filter(term => normalized.includes(term)).length;
+  });
+  return JSON.stringify({ title: page.title, url, excerpts });
 }
 
-function rankedExcerpts(text: string, question: string, length: number, chunkLength: number): string[] {
-  const terms = new Set(
-    question.toLowerCase().match(searchTermsPattern) ?? [],
-  );
+function rankedExcerpts(text: string, length: number, chunkLength: number, score: (chunk: string) => number): string[] {
   const chunks = text.match(new RegExp(`[\\s\\S]{1,${chunkLength}}`, "g")) ?? [];
   const ranked = chunks.map((chunk, index) => ({
     chunk,
     index,
-    score: [...terms].filter(term => chunk.toLowerCase().includes(term)).length,
+    score: score(chunk),
   }));
   ranked.sort(
     (left, right) => right.score - left.score || left.index - right.index,
