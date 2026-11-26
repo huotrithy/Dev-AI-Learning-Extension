@@ -1,6 +1,9 @@
-import { extractPage, type PageSource } from "./extract.ts";
+import type { PageSource } from "./extract.ts";
+import type { YouTubeVideo } from "./youtube.ts";
+
 import { docsLinks } from "./docs.ts";
-import { captureTranscript, videoSource, type YouTubeVideo } from "./youtube.ts";
+import { extractPage } from "./extract.ts";
+import { captureTranscript, videoSource } from "./youtube.ts";
 
 export async function readYouTube(tabId: number, video: YouTubeVideo): Promise<PageSource | undefined> {
   const [snapshot] = await chrome.scripting.executeScript({ target: { tabId }, func: captureTranscript }).catch(() => {

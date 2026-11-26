@@ -17,7 +17,7 @@ export function useHighlightedCode(value: string, language: string) {
     let cancelled = false;
 
     import("@/src/lib/highlighter")
-      .then(({ loadHighlighter }) => loadHighlighter(language))
+      .then(async ({ loadHighlighter }) => loadHighlighter(language))
       .then((next) => {
         if (!cancelled) {
           setLoaded({ language, highlighter: next });

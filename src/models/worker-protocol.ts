@@ -60,4 +60,4 @@ export type ModelReply
   = | { type: "chunk"; text: string }
     | { type: "done"; decision?: unknown }
     | { type: "error"; code: "decision"; failure: FreeLlmDecisionError["failure"] }
-  | { type: "error"; code: "endpoint" | "decision-endpoint-as-chat" | "profile-changed" | "request" };
+    | { type: "error"; code: "endpoint" | "decision-endpoint-as-chat" | "profile-changed" | "request" };

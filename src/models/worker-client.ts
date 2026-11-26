@@ -1,15 +1,15 @@
 import type { ModelGateway } from "./gateway.ts";
+import type { ModelCommand, ModelReply, SettingsCommand, SettingsReply } from "./worker-protocol.ts";
 
 import { decisionSchemas } from "./decision-schemas.ts";
 import { FreeLlmDecisionError } from "./freellm-decisions.ts";
 import { DecisionEndpointAsChatError, InsecureModelEndpointError, isNativeDecision } from "./profiles.ts";
 import {
+
   modelPortName,
+
   modelSettingsChannel,
-  type ModelCommand,
-  type ModelReply,
-  type SettingsCommand,
-  type SettingsReply,
+
 } from "./worker-protocol.ts";
 
 export async function updateModelSettings(command: SettingsCommand) {

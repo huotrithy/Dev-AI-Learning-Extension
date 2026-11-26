@@ -1,18 +1,21 @@
+import type { ModelProfile, ModelSettings, PublicModelSettings } from "./profiles.ts";
+import type { SettingsCommand, SettingsReply } from "./worker-protocol.ts";
+
 import {
   hostPermission,
   isNativeDecision,
+  loadSettings,
   modelEndpoint,
   modelHeaders,
+
   modelRequestEndpoint,
+
   profileType,
-  loadSettings,
+
   saveSettings,
-  type ModelProfile,
-  type ModelSettings,
-  type PublicModelSettings,
   usesCompatibleChat,
 } from "./profiles.ts";
-import { settingsCommandSchema, type SettingsCommand, type SettingsReply } from "./worker-protocol.ts";
+import { settingsCommandSchema } from "./worker-protocol.ts";
 
 const profileRevision = (profile: ModelProfile) => profile.revision ?? "legacy";
 
@@ -72,8 +75,9 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
   let previous: ModelProfile | undefined;
   try {
     if (existing?.provider === provider && isNativeDecision(existing) === isNativeDecision(profile)
-      && Boolean(existing.chatEndpoint) === Boolean(profile.chatEndpoint) && modelEndpoint(existing).href === destination)
+      && Boolean(existing.chatEndpoint) === Boolean(profile.chatEndpoint) && modelEndpoint(existing).href === destination) {
       previous = existing;
+    }
   }
   catch { /* Invalid older endpoints cannot retain credentials. */ }
 
@@ -104,7 +108,7 @@ export function applyModelSettingsCommand(settings: ModelSettings, command: Excl
 
 let pending = Promise.resolve();
 
-export function handleModelSettings(message: unknown): Promise<SettingsReply> {
+export async function handleModelSettings(message: unknown): Promise<SettingsReply> {
   const parsed = settingsCommandSchema.safeParse(message);
   if (!parsed.success)
     return Promise.resolve({ error: "Invalid model settings request." });

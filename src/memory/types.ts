@@ -19,34 +19,34 @@ export const choiceSchema = z.discriminatedUnion("kind", [
 export type Choice = z.infer<typeof choiceSchema>;
 export type Observation = Choice & { scope: string; explicit: boolean };
 
-export interface Evidence { sessionId: string; turnId: string; text: string }
+export type Evidence = { sessionId: string; turnId: string; text: string };
 export type MemoryRecord = Observation & { id: string; evidence: Evidence[]; updatedAt: number };
 
-export interface ObservationBatch {
+export type ObservationBatch = {
   sessionId: string;
   turnId: string;
   revision: number;
   observedAt: number;
   evidence: string;
   observations: Observation[];
-}
+};
 
-export interface MemoryContext {
+export type MemoryContext = {
   prompt: string;
   intents: string[];
-}
+};
 
-export interface MemoryStatus { enabled: boolean; revision: number }
+export type MemoryStatus = { enabled: boolean; revision: number };
 
-export interface MemoryRepository {
-  status(): Promise<MemoryStatus>;
-  recall(scope: string): Promise<MemoryContext>;
-  observe(batch: ObservationBatch): Promise<void>;
-  list(): Promise<MemoryRecord[]>;
-  update(observation: Choice & { scope: string }, replaceId?: string): Promise<void>;
-  remove(id: string): Promise<void>;
-  clear(): Promise<void>;
-  setEnabled(enabled: boolean): Promise<void>;
-}
+export type MemoryRepository = {
+  status: () => Promise<MemoryStatus>;
+  recall: (scope: string) => Promise<MemoryContext>;
+  observe: (batch: ObservationBatch) => Promise<void>;
+  list: () => Promise<MemoryRecord[]>;
+  update: (observation: Choice & { scope: string }, replaceId?: string) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  clear: () => Promise<void>;
+  setEnabled: (enabled: boolean) => Promise<void>;
+};
 
 export const emptyMemory: MemoryContext = { prompt: "", intents: [] };

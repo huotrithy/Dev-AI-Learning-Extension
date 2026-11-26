@@ -1,15 +1,16 @@
-import { learningLimits } from "../learning/config.ts";
-import { observationInstructions, suggestionInstructions, suggestionPrompt } from "../learning/prompts.ts";
-import { decisionSchemas } from "../models/decision-schemas.ts";
 import type { ModelGateway } from "../models/gateway.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { MemoryContext, Observation } from "./types.ts";
 
-export interface UserTurn {
+import { learningLimits } from "../learning/config.ts";
+import { observationInstructions, suggestionInstructions, suggestionPrompt } from "../learning/prompts.ts";
+import { decisionSchemas } from "../models/decision-schemas.ts";
+
+export type UserTurn = {
   text: string;
   origin: "user" | "suggestion";
   scope: string;
-}
+};
 
 const { observations: observationSchema, suggestions: suggestionsSchema } = decisionSchemas;
 const standingRequest = /^(?:(?:please|can you|could you)\s+)?(?:always\s+(?:use|give|start|show|include|explain|prefer|write|keep|put|lead|walk|answer)\b|from now on\b|in (?:the )?future\b|by default\b|remember\b|my preference\b|i prefer\b)/i;

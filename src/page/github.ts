@@ -1,16 +1,17 @@
 import { z } from "zod";
+
 import type { PageSource } from "./extract.ts";
 
-export interface GitHubRepository { owner: string; name: string }
-export interface RepositoryFile { path: string; url: string; text: string }
-export interface RepositorySource {
+export type GitHubRepository = { owner: string; name: string };
+export type RepositoryFile = { path: string; url: string; text: string };
+export type RepositorySource = {
   branch: string;
   commit: string;
   truncated: boolean;
   paths: string[];
   candidatePaths?: string[];
   files: RepositoryFile[];
-}
+};
 
 const github = "https://github.com";
 const githubApi = "https://api.github.com";
@@ -51,7 +52,7 @@ const treeSchema = z.object({
   tree: z.array(z.object({ path: z.string(), type: z.string(), mode: z.string(), size: z.number().optional() })),
 });
 const readme = /(?:^|\/)readme(?:\.(?:md|mdx|rst|txt|adoc))?$/i;
-const entryPoint = /(?:^|\/)(?:index|main|app|server|cli|lib|__main__|mod)\.[^.\/]+$/i;
+const entryPoint = /(?:^|\/)(?:index|main|app|server|cli|lib|__main__|mod)\.[^./]+$/i;
 const manifest = /^(?:package\.json|Cargo\.toml|go\.mod|pyproject\.toml|pom\.xml|Gemfile|composer\.json|deno\.jsonc?|build\.gradle(?:\.kts)?)$/i;
 const code = /\.(?:[cm]?[jt]sx?|py|rs|go|rb|java|kts?|cs|fs|php|swift|scala|c|h|cpp|hpp|exs?|erl|clj|lua|zig|dart|vue|svelte|sh|tf|sql)$/i;
 const excludedDirectory = /(?:^|\/)(?:dist|build|out|vendor|node_modules|coverage|test|tests|__tests__|fixtures|examples|\.github)(?:\/|$)/i;
@@ -66,7 +67,7 @@ export function githubRepository(url: string): GitHubRepository | undefined {
   }
   if (parsed.origin !== github || parsed.username || parsed.password)
     return;
-  const match = /^\/([a-z0-9][a-z0-9-]*)\/([a-z0-9_.-]+)\/?$/i.exec(parsed.pathname);
+  const match = /^\/([a-z0-9][a-z0-9-]*)\/([\w.-]+)\/?$/i.exec(parsed.pathname);
   if (!match)
     return;
   const [, owner, name] = match;
@@ -140,7 +141,7 @@ export async function loadRepository(repo: GitHubRepository, signal: AbortSignal
   const { sha: commit } = revision;
   const { tree, truncated } = treeSchema.parse(await (await read(`/git/trees/${revision.commit.tree.sha}?recursive=1`)).json());
   const entries = tree.filter(({ path }) => path.length <= 240 && !excludedDirectory.test(path)
-    && path.split("/").every(part => part && part !== "." && part !== ".." && !/[\u0000-\u001f\u007f\\]/.test(part)));
+    && path.split("/").every(part => part && part !== "." && part !== ".." && !/[\u0000-\u001F\u007F\\]/.test(part)));
   const candidates = entries.filter(({ path, type, mode, size }) => type === "blob"
     && (mode === "100644" || mode === "100755") && size !== undefined && size > 0 && size <= 64_000
     && (readme.test(path) || manifest.test(path.split("/").at(-1) ?? "") || code.test(path))
@@ -148,7 +149,7 @@ export async function loadRepository(repo: GitHubRepository, signal: AbortSignal
     .sort((a, b) => filePriority(b.path) - filePriority(a.path) || a.path.localeCompare(b.path));
   if (!candidates.length)
     throw new RepositoryReadError("No supported text files were found in the repository tree sample.");
-  const files = await Promise.all(candidates.slice(0, 5).map(({ path }) => readRepositoryFile(home.url, commit, path, read)));
+  const files = await Promise.all(candidates.slice(0, 5).map(async ({ path }) => readRepositoryFile(home.url, commit, path, read)));
   signal.throwIfAborted();
   const excerpts = files.filter(file => file !== undefined).map(file => ({ ...file, text: file.text.trim().slice(0, 1_800) }));
   if (!excerpts.length)
@@ -168,7 +169,7 @@ function compactName(value: string): string {
 }
 
 function relativeImports(file: RepositoryFile, candidates: Set<string>): string[] {
-  const matches = file.text.matchAll(/(?:\bfrom\s+|\bimport\s*\(?\s*|\brequire\(\s*)['"](\.\.?\/[^'"\r\n]+)['"]/g);
+  const matches = file.text.matchAll(/(?:\bfrom\s+|\bimport\s*(?:\(\s*)?|\brequire\(\s*)['"](\.\.?\/[^'"\r\n]+)['"]/g);
   const paths = [];
   for (const [, specifier] of matches) {
     const parts = file.path.split("/").slice(0, -1);

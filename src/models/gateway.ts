@@ -1,21 +1,26 @@
+import type { LanguageModel } from "ai";
+
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, streamText, tool, type LanguageModel } from "ai";
+import { generateText, streamText, tool } from "ai";
 import { z } from "zod";
-import { modelHeaders, modelRequestEndpoint, type ModelProfile, usesCompatibleChat } from "./profiles.ts";
 
-export interface ModelRequest {
+import type { ModelProfile } from "./profiles.ts";
+
+import { modelHeaders, modelRequestEndpoint, usesCompatibleChat } from "./profiles.ts";
+
+export type ModelRequest = {
   system: string;
   prompt: string;
   maxOutputTokens: number;
   activity?: string;
-}
+};
 
-export interface ModelGateway {
-  stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<string>;
-  decide(request: ModelRequest, schema: z.ZodType, signal: AbortSignal): Promise<unknown>;
-}
+export type ModelGateway = {
+  stream: (request: ModelRequest, signal: AbortSignal) => AsyncIterable<string>;
+  decide: (request: ModelRequest, schema: z.ZodType, signal: AbortSignal) => Promise<unknown>;
+};
 
 export async function decideWithFallback<T>(
   schema: z.ZodType<T>,
@@ -56,7 +61,7 @@ function createModel(profile: ModelProfile): LanguageModel {
   const { key, model, provider } = profile;
   const customHeaders = modelHeaders(profile);
   const exactEndpoint = usesCompatibleChat(profile) && profile.chatEndpoint ? modelRequestEndpoint(profile).href : undefined;
-  const providerFetch: typeof fetch = (input, init) => {
+  const providerFetch: typeof fetch = async (input, init) => {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     customHeaders.forEach((value, name) => headers.set(name, value));
     return fetch(exactEndpoint ?? input, { ...init, headers, redirect: "error" });
@@ -97,7 +102,7 @@ export function createGateway(main: ModelProfile, system: ModelProfile): ModelGa
       }
       signal.throwIfAborted();
     },
-    decide(request, schema, signal) {
+    async decide(request, schema, signal) {
       const options = { system: request.system, prompt: request.prompt, maxOutputTokens: request.maxOutputTokens, model: systemModel, abortSignal: signal, maxRetries: 0 };
       return decideWithFallback(schema, {
         tool: system.toolCalls

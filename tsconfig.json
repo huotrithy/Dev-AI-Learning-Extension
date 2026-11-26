@@ -1,6 +1,8 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@": ["."],
       "@/*": ["./*"],
@@ -11,10 +13,8 @@
       "~~": ["."],
       "~~/*": ["./*"]
     },
-    "strict": true,
     "allowImportingTsExtensions": true,
-    "jsx": "react-jsx",
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "strict": true,
     "skipLibCheck": true
   }
 }

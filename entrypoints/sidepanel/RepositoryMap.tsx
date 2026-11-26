@@ -1,4 +1,6 @@
-import { architectureFlowchart, type RepositoryArchitecture } from "../../src/learning/architecture.ts";
+import type { RepositoryArchitecture } from "../../src/learning/architecture.ts";
+
+import { architectureFlowchart } from "../../src/learning/architecture.ts";
 import { Diagram } from "./Diagram.tsx";
 
 export function RepositoryMap({ map, pending }: { map?: RepositoryArchitecture | null; pending: boolean }) {
