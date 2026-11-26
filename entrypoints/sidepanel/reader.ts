@@ -4,7 +4,7 @@ import { LatestRequest, streamAnswer, streamLearning, type ChatTurn } from "../.
 import type { AnswerStyle } from "../../src/learning/answer-style.ts";
 import { introductionQuestion } from "../../src/learning/prompts.ts";
 import { createActivity, trackModelActivity, type ActivityStep } from "../../src/learning/activity.ts";
-import { chatHistory } from "../../src/learning/history.ts";
+import { chatHistory, type ResumableConversation } from "../../src/learning/history.ts";
 import { defaultDepth, learningLimits, type Depth, type Section } from "../../src/learning/config.ts";
 import type { RepositoryArchitecture } from "../../src/learning/architecture.ts";
 import { extractObservations, prepareSuggestions, type UserTurn } from "../../src/memory/observation.ts";
@@ -150,6 +150,23 @@ export function invalidateTab(tabId: number): void {
   resetPage(tabId);
 }
 
+export function resumeConversation({ id, source, turns }: ResumableConversation): void {
+  navigation.cancel();
+  resetPage();
+  const { page, depth, sections, introStyle, architecture } = source;
+  useReader.setState({
+    page,
+    session: id,
+    depth,
+    sections,
+    introStyle,
+    architecture,
+    includeRelatedDocs: Boolean(page.docs),
+    chat: turns,
+    loading: false,
+  });
+}
+
 function restoreReader(tabId: number | undefined, page: PageSource, snapshot: ReaderSnapshot): void {
   const { depth, includeRelatedDocs = Boolean(page.docs), sections, introStyle, architecture, activity = [], chat, suggestions, question, session, notice } = snapshot;
   useReader.setState({ tabId, page, depth, includeRelatedDocs, sections, introStyle, architecture, activity, chat, suggestions, question, session, notice, loading: false });
@@ -182,7 +199,7 @@ export async function loadPage(
         : await readTab(tab.id);
     if (!navigation.isCurrent(controller))
       return;
-    const samePage = previous.page?.url === page.url;
+    const samePage = previous.tabId === tab.id && previous.page?.url === page.url;
     if (restore?.tabId === tab.id && restore.url === page.url) {
       restoreReader(tab.id, restore.loadedSource?.url === page.url ? restore.loadedSource : page, restore);
     }
@@ -190,7 +207,7 @@ export async function loadPage(
       useReader.setState({
         page,
         session: samePage ? previous.session : crypto.randomUUID(),
-        includeRelatedDocs: samePage && previous.tabId === tab.id && previous.includeRelatedDocs,
+        includeRelatedDocs: samePage && previous.includeRelatedDocs,
         loading: false,
       });
     }
@@ -265,7 +282,7 @@ export async function learn(settings: ModelSettings): Promise<void> {
         if (!request.isCurrent(controller))
           return;
         page = { ...page, ...collection };
-        set({ page, chat: [] });
+        set({ page, chat: [], session: crypto.randomUUID() });
       }
       else {
         set({ includeRelatedDocs: false, notice: "Site access was declined. The explanation uses the current page." });
@@ -273,7 +290,7 @@ export async function learn(settings: ModelSettings): Promise<void> {
     }
     else if (!includeRelatedDocs && page.docs) {
       page = { ...page, docs: undefined, docsIndex: undefined };
-      set({ page, chat: [] });
+      set({ page, chat: [], session: crypto.randomUUID() });
     }
     const references = docsReferences(page);
     finishSource(fetchDocs && !page.docs?.length ? "fallback" : "done", page.repository
@@ -358,7 +375,7 @@ async function findAnswerSource(page: PageSource, question: string, signal: Abor
 
 export async function ask(text: string, origin: UserTurn["origin"], settings: ModelSettings): Promise<void> {
   const reader = useReader.getState();
-  const { page, session, chat, depth, working, sections } = reader;
+  const { page, session, chat, depth, working, sections, introStyle, architecture } = reader;
   const question = text.trim().slice(0, learningLimits.chat.questionCharacters);
   if (!page || !question || working || hasPendingDocsScope(reader) || (githubRepository(page.url) && !page.repository) || (youtubeVideo(page.url) && !page.video))
     return;
@@ -430,7 +447,9 @@ export async function ask(text: string, origin: UserTurn["origin"], settings: Mo
         return;
       if (revision === undefined)
         throw new Error("History unavailable");
-      await chatHistory.save(revision, session, page, { id: turnId, question, answer: turn.answer });
+      await chatHistory.save(revision, session, page, { ...turn, id: turnId }, {
+        reader: { depth, sections, introStyle, architecture },
+      });
     }
     catch {
       if (request.isCurrent(controller))
@@ -501,7 +520,7 @@ export async function reviseAnswer(target: "intro" | number, style: AnswerStyle,
           if (revision === undefined)
             throw new Error("History unavailable");
           if (request.isCurrent(controller))
-            await chatHistory.revise(revision, session, turn.id, answer);
+            await chatHistory.revise(revision, session, { ...revised, id: turn.id });
         }
         catch {
           if (request.isCurrent(controller))

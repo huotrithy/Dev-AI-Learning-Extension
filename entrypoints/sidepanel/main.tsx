@@ -50,6 +50,7 @@ import {
   invalidateTab,
   learn,
   loadPage,
+  resumeConversation,
   reviseAnswer,
   stopReading,
   useReader,
@@ -347,7 +348,20 @@ function App() {
           </>
         )}
         {view === "memory" && <MemorySettings />}
-        {view === "history" && <History renderAnswer={text => <Prose text={text} />} />}
+        {view === "history" && (
+          <History
+            renderAnswer={text => <Prose text={text} />}
+            activeSession={reader.chat.length ? reader.session : ""}
+            hasDraft={Boolean(question.trim())}
+            working={Boolean(reader.working)}
+            onResume={(conversation) => {
+              const current = useReader.getState();
+              if (current.session !== conversation.id || !current.chat.length)
+                resumeConversation(conversation);
+              setView("read");
+            }}
+          />
+        )}
         {view === "read" && (
           <>
             {reader.loading && (
@@ -576,7 +590,7 @@ function App() {
                           <Prose
                             text={text}
                             sources={video?.excerpts ?? docs ?? repository?.files}
-                            onSourceClick={video ? jumpToTimestamp : undefined}
+                            onSourceClick={video && reader.tabId !== undefined ? jumpToTimestamp : undefined}
                           />
                         )}
                     {id === "intro" && reader.working !== "learn" && settings && profile && (
@@ -602,7 +616,7 @@ function App() {
                       <Prose
                         text={answer}
                         sources={video?.excerpts ?? answerDocs ?? docs ?? repositoryFiles ?? repository?.files}
-                        onSourceClick={video ? jumpToTimestamp : undefined}
+                        onSourceClick={video && reader.tabId !== undefined ? jumpToTimestamp : undefined}
                       />
                     )
                   : reader.working === "chat"
