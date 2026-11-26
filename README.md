@@ -93,3 +93,7 @@ The browser test opens the native side panel on a local fixture page and uses a 
 Reuse the shadcn/ui components in `src/components/ui`. The root `components.json` configures the Base UI Nova registry and the sidebar theme.
 
 See the [roadmap](docs/ROADMAP.md) for upcoming features.
+
+## License
+
+The extension source is available under the [MIT License](LICENSE). See the [third-party notices](public/third-party-notices.txt) for attribution.
