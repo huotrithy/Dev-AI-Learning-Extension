@@ -1,4 +1,8 @@
-export type Provider = 'compatible' | 'openai' | 'anthropic';
+export const freeLlmProvider = "freellm-decisions";
+export const providers = ["compatible", "openai", "anthropic", freeLlmProvider] as const;
+export type Provider = typeof providers[number];
+export const profileTypes = ["chat", "decision"] as const;
+export type ProfileType = typeof profileTypes[number];
 
 export interface ModelHeader {
   name: string;
@@ -9,8 +13,10 @@ export interface ModelProfileDetails {
   id: string;
   label: string;
   provider: Provider;
+  type?: ProfileType;
   model: string;
   endpoint: string;
+  chatEndpoint?: string;
   toolCalls: boolean;
   disableThinking: boolean;
 }
@@ -39,30 +45,47 @@ export interface ModelSettings {
   system: string;
 }
 
-export const defaultSettings = { profiles: [], main: '', system: '' };
+export const defaultSettings = { profiles: [], main: "", system: "" };
+
+type ProfileKind = Pick<ModelProfileDetails, "provider" | "type">;
+
+export function profileType(profile: ProfileKind): ProfileType {
+  return profile.type ?? (profile.provider === freeLlmProvider ? "decision" : "chat");
+}
+
+export function isNativeDecision(profile: ProfileKind): boolean {
+  return profile.provider === freeLlmProvider && profileType(profile) === "decision";
+}
+
+export function usesCompatibleChat(profile: ProfileKind): boolean {
+  return profile.provider === "compatible" || (profile.provider === freeLlmProvider && !isNativeDecision(profile));
+}
 
 export function createProfileDetails(): ModelProfileDetails {
   return {
     id: crypto.randomUUID(),
-    label: '',
-    provider: 'compatible',
-    model: '',
-    endpoint: '',
+    label: "",
+    provider: "compatible",
+    model: "",
+    endpoint: "",
     toolCalls: false,
     disableThinking: false,
   };
 }
 
 export function createProfile(): ModelProfile {
-  return { ...createProfileDetails(), key: '' };
+  return { ...createProfileDetails(), key: "" };
 }
 
 export function modelEndpoint(profile: ModelProfileDetails): URL {
-  if (profile.provider === 'openai') return new URL('https://api.openai.com/v1');
-  if (profile.provider === 'anthropic') return new URL('https://api.anthropic.com/v1');
-  const endpoint = new URL(profile.endpoint);
-  if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new Error('Enter an HTTP or HTTPS base URL without credentials, a query, or a fragment.');
+  if (profile.provider === "openai")
+    return new URL("https://api.openai.com/v1");
+  if (profile.provider === "anthropic")
+    return new URL("https://api.anthropic.com/v1");
+  const url = usesCompatibleChat(profile) && profile.chatEndpoint ? profile.chatEndpoint : profile.endpoint;
+  const endpoint = new URL(url);
+  if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error("Enter an HTTP or HTTPS URL without credentials, a query, or a fragment.");
   }
   return endpoint;
 }
@@ -72,20 +95,21 @@ export function hostPermission(endpoint: URL): string {
 }
 
 function isRemoteHttp(endpoint: URL): boolean {
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
-  return endpoint.protocol === 'http:' && !loopback;
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname);
+  return endpoint.protocol === "http:" && !loopback;
 }
 
 export function modelHeaders(profile: ModelProfile): Headers {
   if (profile.customHeaders?.length && isRemoteHttp(modelEndpoint(profile))) {
-    throw new Error('Use HTTPS to send custom headers to a model endpoint outside this computer.');
+    throw new Error("Use HTTPS to send custom headers to a model endpoint outside this computer.");
   }
   const headers = new Headers();
   for (const [index, header] of (profile.customHeaders ?? []).entries()) {
     const name = header.name.trim();
     try {
       headers.append(name, header.value);
-    } catch {
+    }
+    catch {
       throw new Error(`Enter a valid HTTP header name and value for header ${index + 1}.`);
     }
   }
@@ -94,23 +118,32 @@ export function modelHeaders(profile: ModelProfile): Headers {
 
 export class InsecureModelEndpointError extends Error {
   constructor() {
-    super('Use HTTPS to send an API key to a model endpoint outside this computer.');
+    super("Use HTTPS to send an API key to a model endpoint outside this computer.");
+  }
+}
+
+export class DecisionEndpointAsChatError extends Error {
+  constructor() {
+    super("For the FreeLLM Decision API, select FreeLLM as Provider and Decision as Type. For chat, use the FreeLLM base URL ending in /v1 or its full /v1/chat/completions URL.");
   }
 }
 
 export function modelRequestEndpoint(profile: ModelProfile): URL {
   const endpoint = modelEndpoint(profile);
-  if (profile.key && isRemoteHttp(endpoint)) throw new InsecureModelEndpointError();
+  if (usesCompatibleChat(profile) && /\/v1\/(?:decisions|systemone)\/*$/.test(endpoint.pathname))
+    throw new DecisionEndpointAsChatError();
+  if (profile.key && isRemoteHttp(endpoint))
+    throw new InsecureModelEndpointError();
   return endpoint;
 }
 
 export function restrictModelStorage(): Promise<void> {
-  return chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  return chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 }
 
 export async function loadSettings(): Promise<ModelSettings> {
   await restrictModelStorage();
-  const stored = await chrome.storage.local.get<{ models?: ModelSettings }>('models');
+  const stored = await chrome.storage.local.get<{ models?: ModelSettings }>("models");
   return stored.models ?? defaultSettings;
 }
 

@@ -3,7 +3,10 @@ import { decisionSchemas } from "../models/decision-schemas.ts";
 import type { ModelGateway } from "../models/gateway.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile, RepositorySource } from "../page/github.ts";
-import { pageContext, teacherPrompt } from "./prompts.ts";
+import { learningLimits } from "./config.ts";
+import { pageContext } from "./context.ts";
+import { mermaidFlowchart } from "./flowchart.ts";
+import { architectureInstructions } from "./prompts.ts";
 
 const architectureSchema = decisionSchemas.architecture;
 
@@ -24,10 +27,9 @@ export async function readArchitecture(
   const decision = await gateway
     .decide(
       {
-        system: `${teacherPrompt}
-Build a small architecture map of the repository. Use only components supported by the supplied file excerpts. For each component, return its short name and the exact file paths from those excerpts. Connect components only when the excerpts support the relationship. Connection endpoints are zero-based indices into components, and labels are short verbs such as "queues work for" or "calls". Return empty arrays when the excerpts do not establish an architecture.`,
-        prompt: pageContext(page, 12_000),
-        maxOutputTokens: 1_000,
+        system: architectureInstructions,
+        prompt: pageContext(page, learningLimits.context.detailed),
+        maxOutputTokens: learningLimits.outputTokens.architecture,
         activity: "Map repository architecture",
       },
       architectureSchema,
@@ -36,7 +38,8 @@ Build a small architecture map of the repository. Use only components supported 
     .catch(() => undefined);
   signal.throwIfAborted();
   const parsed = architectureSchema.safeParse(decision);
-  if (!parsed.success) return null;
+  if (!parsed.success)
+    return null;
 
   const sourceFiles = new Map(
     page.repository.files.map(({ path, url }) => [path, { path, url }]),
@@ -50,7 +53,8 @@ Build a small architecture map of the repository. Use only components supported 
       ? [{ id, name: name.trim(), files: sources }]
       : [];
   });
-  if (!components.length) return null;
+  if (!components.length)
+    return null;
 
   const ids = new Set(components.map(({ id }) => id));
   const connections = parsed.data.connections.filter(
@@ -60,26 +64,9 @@ Build a small architecture map of the repository. Use only components supported 
   return { components, connections };
 }
 
-function diagramLabel(text: string, fallback: string): string {
-  const label = text
-    .replace(/[^\p{L}\p{M}\p{N} ._-]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return label.replace(/\b(click|href) /gi, "$1-") || fallback;
-}
-
 export function architectureFlowchart({
   components,
   connections,
 }: RepositoryArchitecture): string {
-  return [
-    "flowchart TD",
-    ...components.map(
-      ({ id, name }) => `n${id}["${diagramLabel(name, "Component")}"]`,
-    ),
-    ...connections.map(
-      ({ from, to, label }) =>
-        `n${from} -->|${diagramLabel(label, "connects to")}| n${to}`,
-    ),
-  ].join("\n");
+  return mermaidFlowchart({ components, connections });
 }

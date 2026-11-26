@@ -1,18 +1,20 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ArrowUp } from "lucide-react";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
+import { Checkbox } from "@/src/components/ui/checkbox";
 import { Label } from "@/src/components/ui/label";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/src/components/ui/native-select";
 import { Textarea } from "@/src/components/ui/textarea";
-import { sections, type Section } from "../../src/learning/session.ts";
+import { depthLabels, learningLimits, sections, type Depth, type Section } from "../../src/learning/config.ts";
 import { chatHistory } from "../../src/learning/history.ts";
-import type { Depth } from "../../src/learning/prompts.ts";
+import { pageAccessGranted } from "../../src/learning/reader-window.ts";
 import { githubRepository } from "../../src/page/github.ts";
 import { docsReferences } from "../../src/page/docs.ts";
 import { seekYouTube } from "../../src/page/active-tab.ts";
@@ -24,6 +26,8 @@ import {
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
 import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
+import { AnswerFeedback } from "./AnswerFeedback.tsx";
+import { ChatTurn } from "./ChatTurn.tsx";
 import { CodeSnippet } from "./CodeSnippet.tsx";
 import { ReaderActivity } from "./ReaderActivity.tsx";
 import {
@@ -42,15 +46,21 @@ import {
   ask,
   closeReader,
   hasActiveChat,
+  hasPendingDocsScope,
   invalidateTab,
   learn,
   loadPage,
+  resumeConversation,
+  reviseAnswer,
   stopReading,
   useReader,
   watchMemoryChanges,
-  type ReaderSnapshot,
 } from "./reader.ts";
 import "./style.css";
+
+const depthId = "depth";
+const relatedDocsId = "include-related-docs";
+const fencedLanguagePrefix = "language-";
 
 function Prose({ text, sources, onSourceClick }: {
   text: string;
@@ -61,25 +71,42 @@ function Prose({ text, sources, onSourceClick }: {
     <div className="prose">
       <Markdown
         skipHtml
+        remarkPlugins={[remarkGfm]}
         components={{
-          a: ({ children, href }) => href && sources?.some((source) => source.url === href)
-            ? <a className="underline underline-offset-2" href={href} target="_blank" rel="noreferrer"
-                onClick={onSourceClick && ((event) => {
-                  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  onSourceClick(href);
-                })}>{children}</a>
+          a: ({ children, href }) => href && sources?.some(source => source.url === href)
+            ? (
+                <a
+                  className="underline underline-offset-2"
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={onSourceClick && ((event) => {
+                    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+                      return;
+                    event.preventDefault();
+                    onSourceClick(href);
+                  })}
+                >
+                  {children}
+                </a>
+              )
             : <span>{children}</span>,
           img: () => null,
+          table: ({ children }) => (
+            <div className="markdown-table">
+              <table>{children}</table>
+            </div>
+          ),
           pre: ({ node, children }) => {
             const code = node?.children[0];
-            if (code?.type !== "element" || code.tagName !== "code") return <pre>{children}</pre>;
-            const value = code.children.map((child) => child.type === "text" ? child.value : "").join("");
+            if (code?.type !== "element" || code.tagName !== "code")
+              return <pre>{children}</pre>;
+            const value = code.children.map(child => child.type === "text" ? child.value : "").join("");
             const classes = code.properties.className;
             const language = Array.isArray(classes)
-              ? classes.find((value) => typeof value === "string" && value.startsWith("language-"))
+              ? classes.find(value => typeof value === "string" && value.startsWith(fencedLanguagePrefix))
               : undefined;
-            return <CodeSnippet code={value} language={typeof language === "string" ? language.slice(9) : ""} />;
+            return <CodeSnippet code={value} language={typeof language === "string" ? language.slice(fencedLanguagePrefix.length) : ""} />;
           },
         }}
       >
@@ -98,7 +125,6 @@ function App() {
   const [sourceWindow, setSourceWindow] = useState(floatingSource);
   const [switchingWindow, setSwitchingWindow] = useState(false);
   const [displayError, setDisplayError] = useState("");
-  const lastHostname = useRef<string | undefined>(undefined);
   const { question } = reader;
   const repo = reader.page && githubRepository(reader.page.url);
   const repository = reader.page?.repository;
@@ -107,31 +133,10 @@ function App() {
   const video = reader.page?.video;
   const profile = settings?.profiles.find(({ id }) => id === settings.main);
   const system = settings?.profiles.find(({ id }) => id === settings.system);
-
-  const loadActivePage = useCallback((windowId: number, restore?: ReaderSnapshot) => {
-    if (restore?.loadedSource && hasActiveChat(restore)) {
-      lastHostname.current = new URL(restore.loadedSource.url).hostname;
-    }
-    void loadPage(windowId, restore, (tab) => {
-      const url = new URL(tab.url || tab.pendingUrl || "about:blank");
-      const hostname = /^https?:$/.test(url.protocol) ? url.hostname : undefined;
-      if (lastHostname.current && hostname !== lastHostname.current) {
-        closeReader();
-        if (floating) window.close();
-        else {
-          const showCloseMessage = () => {
-            setDisplayError("The site changed. Close this sidebar and reopen the reader on the new tab.");
-          };
-          if (chrome.sidePanel.close) void chrome.sidePanel.close({ windowId }).catch(showCloseMessage);
-          else showCloseMessage();
-        }
-        return false;
-      }
-      lastHostname.current = hostname;
-      setDisplayError("");
-      return true;
-    });
-  }, []);
+  const pendingDocsScope = hasPendingDocsScope(reader);
+  const learnLabel = reader.sections.intro
+    ? "Explain again"
+    : youtube ? "Learn this video" : repo ? "Learn this repo" : "Learn this page";
 
   useEffect(() => {
     void updateModelSettings({ type: "load-settings" })
@@ -140,10 +145,11 @@ function App() {
         setConfigurationError("Could not open model settings.");
         setSettings(defaultSettings);
       });
-    if (!floating)
+    if (!floating) {
       void chrome.windows
         .getCurrent()
-        .then((window) => setSourceWindow(window.id));
+        .then(window => setSourceWindow(window.id));
+    }
   }, []);
 
   useEffect(() => {
@@ -154,20 +160,22 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (sourceWindow === undefined) return;
+    if (sourceWindow === undefined)
+      return;
     const unwatchMemory = watchMemoryChanges();
     const unwatchHandoff = watchHandoff(sourceWindow, (handoff) => {
       if (handoff) {
         setView(handoff.view);
         setDisplayError("");
       }
-      loadActivePage(sourceWindow, handoff?.reader);
+      void loadPage(sourceWindow, handoff?.reader);
     });
     const activated: Parameters<
       typeof chrome.tabs.onActivated.addListener
     >[0] = (info) => {
-      if (sourceWindow !== info.windowId || hasActiveChat(useReader.getState())) return;
-      loadActivePage(sourceWindow);
+      if (sourceWindow !== info.windowId || hasActiveChat(useReader.getState()))
+        return;
+      void loadPage(sourceWindow);
     };
     const updated: Parameters<typeof chrome.tabs.onUpdated.addListener>[0] = (
       tabId,
@@ -175,24 +183,28 @@ function App() {
     ) => {
       const reader = useReader.getState();
       const { tabId: readerTab, page } = reader;
-      if (tabId !== readerTab || hasActiveChat(reader)) return;
-      if (change.status === "loading") invalidateTab(tabId);
+      if (tabId !== readerTab || hasActiveChat(reader))
+        return;
+      if (change.status === "loading")
+        invalidateTab(tabId);
       else if (change.status === "complete" || (change.url && (!page || youtubeVideo(change.url)?.url !== page.url)))
-        loadActivePage(sourceWindow);
+        void loadPage(sourceWindow);
     };
     const accessGranted: Parameters<
       typeof chrome.runtime.onMessage.addListener
     >[0] = (message) => {
       const { tabId, page } = useReader.getState();
       if (
-        message?.type === "page-access-granted" &&
-        message.tabId === tabId &&
-        !page
-      )
-        loadActivePage(sourceWindow);
+        message?.type === pageAccessGranted
+        && message.tabId === tabId
+        && !page
+      ) {
+        void loadPage(sourceWindow);
+      }
     };
     const windowRemoved = (windowId: number) => {
-      if (sourceWindow === windowId) loadActivePage(sourceWindow);
+      if (sourceWindow === windowId)
+        void loadPage(sourceWindow);
     };
     chrome.tabs.onActivated.addListener(activated);
     chrome.tabs.onUpdated.addListener(updated);
@@ -207,33 +219,37 @@ function App() {
       unwatchMemory();
       closeReader();
     };
-  }, [sourceWindow, loadActivePage]);
+  }, [sourceWindow]);
 
   function refresh() {
-    if (sourceWindow === undefined) return;
-    lastHostname.current = undefined;
-    loadActivePage(sourceWindow);
+    if (sourceWindow === undefined)
+      return;
+    setDisplayError("");
+    void loadPage(sourceWindow);
   }
 
   async function changeDisplay() {
     if (
-      sourceWindow === undefined ||
-      switchingWindow ||
-      reader.loading ||
-      reader.working
-    )
+      sourceWindow === undefined
+      || switchingWindow
+      || reader.loading
+      || reader.working
+    ) {
       return;
+    }
     setSwitchingWindow(true);
     setDisplayError("");
     try {
       setDisplayError(await switchReaderWindow(sourceWindow, view));
-    } catch {
+    }
+    catch {
       setDisplayError(
         floating
           ? "Could not dock the reader. Check that the original browser window is still open."
           : "Could not open a floating window. Try again.",
       );
-    } finally {
+    }
+    finally {
       setSwitchingWindow(false);
     }
   }
@@ -241,22 +257,24 @@ function App() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
-      !settings ||
-      !reader.page ||
-      (repo && !repository) ||
-      (youtube && !video) ||
-      !profile ||
-      reader.working ||
-      !question.trim()
-    )
+      !settings
+      || !reader.page
+      || (repo && !repository)
+      || (youtube && !video)
+      || !profile
+      || reader.working
+      || !question.trim()
+    ) {
       return;
+    }
     void ask(question, "user", settings);
     useReader.setState({ question: "" });
   }
 
   async function jumpToTimestamp(href: string) {
     const excerpt = video?.excerpts.find(({ url }) => url === href);
-    if (!video || !excerpt || reader.tabId === undefined) return;
+    if (!video || !excerpt || reader.tabId === undefined)
+      return;
     const moved = await seekYouTube(reader.tabId, video.id, excerpt.seconds);
     const current = useReader.getState();
     if (current.tabId === reader.tabId && current.page?.video === video)
@@ -300,10 +318,10 @@ function App() {
           size="sm"
           variant="outline"
           disabled={
-            sourceWindow === undefined ||
-            reader.loading ||
-            Boolean(reader.working) ||
-            switchingWindow
+            sourceWindow === undefined
+            || reader.loading
+            || Boolean(reader.working)
+            || switchingWindow
           }
           onClick={() => void changeDisplay()}
         >
@@ -330,7 +348,20 @@ function App() {
           </>
         )}
         {view === "memory" && <MemorySettings />}
-        {view === "history" && <History renderAnswer={(text) => <Prose text={text} />} />}
+        {view === "history" && (
+          <History
+            renderAnswer={text => <Prose text={text} />}
+            activeSession={reader.chat.length ? reader.session : ""}
+            hasDraft={Boolean(question.trim())}
+            working={Boolean(reader.working)}
+            onResume={(conversation) => {
+              const current = useReader.getState();
+              if (current.session !== conversation.id || !current.chat.length)
+                resumeConversation(conversation);
+              setView("read");
+            }}
+          />
+        )}
         {view === "read" && (
           <>
             {reader.loading && (
@@ -358,96 +389,155 @@ function App() {
             )}
             {reader.page && (
               <section className="source" aria-labelledby="page-title">
-                <div className="source-meta">
-                  <a
-                    href={reader.page.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Open source in a new tab"
-                  >
-                    {new URL(reader.page.url).hostname} ↗
-                  </a>
-                  <Button variant="ghost" size="sm" onClick={refresh}>
-                    Refresh page
-                  </Button>
-                </div>
-                <h1 id="page-title">{reader.page.title}</h1>
-                <div className="read-actions">
-                  <div className="field">
-                    <Label htmlFor="depth">Depth</Label>
-                    <NativeSelect
-                      id="depth"
-                      value={reader.depth}
-                      onChange={(event) => {
-                        const depth = event.target.value as Depth;
-                        useReader.setState({ depth });
-                        if (settings && reader.sections.intro)
-                          void learn(settings, depth);
-                      }}
+                <header className="source-heading">
+                  <div className="source-meta">
+                    <a
+                      href={reader.page.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open source in a new tab"
                     >
-                      <NativeSelectOption value="new">
-                        New to this
-                      </NativeSelectOption>
-                      <NativeSelectOption value="technical">
-                        More technical
-                      </NativeSelectOption>
-                    </NativeSelect>
-                  </div>
-                  {reader.working ? (
-                    <Button variant="outline" onClick={stopReading}>
-                      Stop
+                      {new URL(reader.page.url).hostname}
+                      {" ↗"}
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={refresh}
+                    >
+                      Refresh page
                     </Button>
-                  ) : (
-                    <div className="button-row">
-                      <Button
-                        disabled={!profile}
-                        onClick={() => settings && void learn(settings)}
+                  </div>
+                  <h1 id="page-title">{reader.page.title}</h1>
+                </header>
+                <div className="read-actions">
+                  <div className="read-options">
+                    <div className="field">
+                      <Label htmlFor={depthId}>Depth</Label>
+                      <NativeSelect
+                        id={depthId}
+                        value={reader.depth}
+                        disabled={Boolean(reader.working)}
+                        onChange={(event) => {
+                          const depth = event.target.value as Depth;
+                          useReader.setState({ depth });
+                          if (settings && reader.sections.intro && !pendingDocsScope)
+                            void learn(settings);
+                        }}
                       >
-                        {reader.sections.intro ? "Explain again"
-                          : youtube ? "Learn this video" : repo ? "Learn this repo" : docs ? "Explain these docs" : "Learn this page"}
-                      </Button>
-                      {!repo && Boolean(reader.page.relatedLinks?.length) && (
-                        <Button variant="outline" disabled={!profile}
-                          onClick={() => settings && void learn(settings, reader.depth, docs ? "page" : "docs")}>
-                          {docs ? "Learn this page" : "Learn docs site"}
+                        {Object.entries(depthLabels).map(([value, label]) => (
+                          <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    {!repo && !youtube && Boolean(reader.page.relatedLinks?.length) && (
+                      <div className="related-docs-option">
+                        <Checkbox
+                          id={relatedDocsId}
+                          checked={reader.includeRelatedDocs}
+                          disabled={Boolean(reader.working)}
+                          onCheckedChange={includeRelatedDocs => useReader.setState({ includeRelatedDocs })}
+                        />
+                        <Label htmlFor={relatedDocsId}>Include related docs</Label>
+                      </div>
+                    )}
+                  </div>
+                  {reader.working
+                    ? (
+                        <Button variant="outline" onClick={stopReading}>
+                          Stop
+                        </Button>
+                      )
+                    : (
+                        <Button
+                          disabled={!profile}
+                          onClick={() => settings && void learn(settings)}
+                        >
+                          {learnLabel}
                         </Button>
                       )}
-                    </div>
-                  )}
                 </div>
+                {pendingDocsScope && !reader.working && (
+                  <p className="destination" role="status">
+                    {"Select "}
+                    {learnLabel}
+                    {" "}
+                    to apply the new scope.
+                  </p>
+                )}
                 {profile && (
                   <p className="destination">
-                    {youtube ? "Transcript excerpts go to" : repo ? "Repository excerpts go to" : docs ? "Documentation excerpts go to" : "Model requests go to"} {modelEndpoint(profile).host}
-                    {system &&
-                    modelEndpoint(system).host !== modelEndpoint(profile).host
+                    {youtube ? "Transcript excerpts go to" : repo ? "Repository excerpts go to" : docs ? "Documentation excerpts go to" : "Model requests go to"}
+                    {" "}
+                    {modelEndpoint(profile).host}
+                    {system
+                      && modelEndpoint(system).host !== modelEndpoint(profile).host
                       ? ` and ${modelEndpoint(system).host}`
                       : ""}
                     .
                   </p>
                 )}
                 {youtube && !video && !reader.notice && (
-                  <p className="destination">Expand the video description and select <strong>Show transcript</strong> before learning this video.</p>
+                  <p className="destination">
+                    {"Expand the video description and select "}
+                    <strong>Show transcript</strong>
+                    {" "}
+                    before learning this video.
+                  </p>
                 )}
                 {video?.truncated && (
                   <p className="destination">The transcript was too long to capture in full. Answers use the captured captions.</p>
                 )}
                 {repository && (
                   <details className="destination [overflow-wrap:anywhere]">
-                    <summary className="cursor-pointer">Files inspected ({repository.files.length})</summary>
-                    <p>{repository.branch} · {repository.commit.slice(0, 7)}{repository.truncated ? " · Partial GitHub file tree" : ""}</p>
+                    <summary className="cursor-pointer">
+                      Files inspected (
+                      {repository.files.length}
+                      )
+                    </summary>
+                    <p>
+                      {repository.branch}
+                      {" "}
+                      ·
+                      {" "}
+                      {repository.commit.slice(0, 7)}
+                      {repository.truncated ? " · Partial GitHub file tree" : ""}
+                    </p>
                     <ul className="list-disc pl-5">
                       {repository.files.map(({ path, url }) => (
-                        <li key={path}><a className="underline" href={url} target="_blank" rel="noreferrer">{path}</a></li>
+                        <li key={path}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {path}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
                 )}
                 {docs && (
                   <details className="destination">
-                    <summary className="cursor-pointer">Documentation pages read ({docs.length})</summary>
+                    <summary className="cursor-pointer">
+                      Documentation pages read (
+                      {docs.length}
+                      )
+                    </summary>
                     <ul className="list-disc pl-5">
                       {docs.map(({ title, url }) => (
-                        <li key={url}><a className="underline" href={url} target="_blank" rel="noreferrer">{title}</a></li>
+                        <li key={url}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {title}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
@@ -480,19 +570,36 @@ function App() {
             <ReaderActivity steps={reader.activity} />
             {Object.entries(sections).map(([id, heading]) => {
               const text = reader.sections[id as Section];
-              if (!text) return null;
+              if (!text)
+                return null;
               return (
                 <Fragment key={id}>
                   <section className={`learning-section ${id === "intro" ? "intro" : ""}`}>
                     <h2>{heading}</h2>
-                    {id === "diagram" ? (
-                      reader.working === "learn" ? (
-                        <p className="muted">Generating diagram…</p>
-                      ) : (
-                        <Diagram source={text} />
-                      )
-                    ) : (
-                      <Prose text={text} sources={video?.excerpts ?? docs ?? repository?.files} onSourceClick={video ? jumpToTimestamp : undefined} />
+                    {id === "diagram"
+                      ? (
+                          reader.working === "learn"
+                            ? (
+                                <p className="muted">Generating diagram…</p>
+                              )
+                            : (
+                                <Diagram source={text} />
+                              )
+                        )
+                      : (
+                          <Prose
+                            text={text}
+                            sources={video?.excerpts ?? docs ?? repository?.files}
+                            onSourceClick={video && reader.tabId !== undefined ? jumpToTimestamp : undefined}
+                          />
+                        )}
+                    {id === "intro" && reader.working !== "learn" && settings && profile && (
+                      <AnswerFeedback
+                        key={reader.session}
+                        style={reader.introStyle}
+                        disabled={Boolean(reader.working) || pendingDocsScope}
+                        revise={style => reviseAnswer("intro", style, settings)}
+                      />
                     )}
                   </section>
                   {id === "intro" && repository && (
@@ -501,30 +608,57 @@ function App() {
                 </Fragment>
               );
             })}
-            {reader.chat.map(({ question, answer, repositoryFiles, repositoryNotice, activity }, index) => (
-              <section className="chat-turn" key={index}>
-                <h2>{question}</h2>
+            {reader.chat.map(({ id, question, answer, style, docsReferences: answerDocs, repositoryFiles, repositoryNotice, activity }, index) => (
+              <ChatTurn key={id ?? index} question={question}>
                 <ReaderActivity steps={activity} />
-                {answer ? (
-                  <Prose text={answer} sources={video?.excerpts ?? docs ?? repositoryFiles ?? repository?.files} onSourceClick={video ? jumpToTimestamp : undefined} />
-                ) : reader.working === "chat" &&
-                  index === reader.chat.length - 1 ? (
-                  <p role="status" className="muted">
-                    Generating answer…
-                  </p>
-                ) : null}
+                {answer
+                  ? (
+                      <Prose
+                        text={answer}
+                        sources={video?.excerpts ?? answerDocs ?? docs ?? repositoryFiles ?? repository?.files}
+                        onSourceClick={video && reader.tabId !== undefined ? jumpToTimestamp : undefined}
+                      />
+                    )
+                  : reader.working === "chat"
+                    && index === reader.chat.length - 1
+                    ? (
+                        <p role="status" className="muted">
+                          Generating answer…
+                        </p>
+                      )
+                    : null}
                 {repositoryNotice && <p className="destination" role="status">{repositoryNotice}</p>}
                 {!!repositoryFiles?.length && (
                   <details className="destination [overflow-wrap:anywhere]">
-                    <summary className="cursor-pointer">Files inspected for this answer ({repositoryFiles.length})</summary>
+                    <summary className="cursor-pointer">
+                      Files inspected for this answer (
+                      {repositoryFiles.length}
+                      )
+                    </summary>
                     <ul className="list-disc pl-5">
                       {repositoryFiles.map(({ path, url }) => (
-                        <li key={path}><a className="underline" href={url} target="_blank" rel="noreferrer">{path}</a></li>
+                        <li key={path}>
+                          <a
+                            className="underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {path}
+                          </a>
+                        </li>
                       ))}
                     </ul>
                   </details>
                 )}
-              </section>
+                {answer.trim() && settings && profile && (
+                  <AnswerFeedback
+                    style={style}
+                    disabled={Boolean(reader.working) || pendingDocsScope}
+                    revise={style => reviseAnswer(index, style, settings)}
+                  />
+                )}
+              </ChatTurn>
             ))}
           </>
         )}
@@ -533,15 +667,14 @@ function App() {
         <footer className="composer">
           {reader.suggestions.length > 0 && (
             <ul className="suggestions" aria-label="Suggested questions">
-              {reader.suggestions.map((suggestion) => (
+              {reader.suggestions.map(suggestion => (
                 <li key={suggestion}>
                   <Button
                     variant="secondary"
                     className="h-auto w-full justify-start whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]"
-                    disabled={Boolean(reader.working)}
+                    disabled={Boolean(reader.working) || pendingDocsScope}
                     onClick={() =>
-                      settings && void ask(suggestion, "suggestion", settings)
-                    }
+                      settings && void ask(suggestion, "suggestion", settings)}
                   >
                     {suggestion}
                   </Button>
@@ -557,11 +690,10 @@ function App() {
               id="question"
               placeholder={youtube ? "Ask about this video…" : repo ? "Ask about this repo…" : docs ? "Ask about these docs…" : "Ask about this page…"}
               value={question}
-              maxLength={2_000}
-              rows={2}
-              onChange={(event) =>
-                useReader.setState({ question: event.target.value })
-              }
+              maxLength={learningLimits.chat.questionCharacters}
+              rows={1}
+              onChange={event =>
+                useReader.setState({ question: event.target.value })}
             />
             <Button
               className="composer-send"
@@ -569,9 +701,13 @@ function App() {
               type="submit"
               aria-label="Send question"
               title="Send question"
-              disabled={Boolean(reader.working) || !question.trim()}
+              disabled={Boolean(reader.working) || pendingDocsScope || !question.trim()}
             >
-              <ArrowUp aria-hidden="true" className="size-5" strokeWidth={2.5} />
+              <ArrowUp
+                aria-hidden="true"
+                className="size-5"
+                strokeWidth={2.5}
+              />
             </Button>
           </form>
         </footer>

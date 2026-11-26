@@ -12,14 +12,14 @@ A Chrome side panel for learning technical pages with your own model. It streams
    pnpm run build
    ```
 
-3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, choose a provider, give the profile a name, and enter the model ID and credentials from your provider. For an **OpenAI-compatible** provider, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
+3. Open a technical article and click the extension’s toolbar icon. In **Settings** under **Model settings**, click **Add profile**, choose a **Provider** and **Type**, and enter the profile name, model ID, and credentials. Use **Chat** for the explanation model. A **Decision** profile is for **System 1**. OpenAI and other chat providers can use their regular API to return a structured decision. For **OpenAI-compatible**, enter its base URL too. Save the profile and allow access to its endpoint when Chrome prompts.
 4. Return to **Read** and select **Learn this page**. Click the toolbar icon on a new tab when it needs page access.
 
 Expand **Activity** to see source reads, model calls, and fallbacks for an explanation or answer. Code snippets have line numbers and controls for wrapping and copying.
 
 Use **Open floating window** in the reader header to move it into a resizable window. Use **Dock to sidebar** to bring it back. Both modes read the active tab in the browser window where you opened the reader and carry your explanation, chat, and draft when you switch. Older browser versions may require you to close the sidebar manually after opening the floating window.
 
-An open chat or unsent draft stays with its original page when you switch tabs or follow a link. To start a new reading session on the active page, choose **Refresh page**. Before you start a chat or draft, leaving the current hostname closes the reader. Click the toolbar icon to open it on the new tab and grant access. The `tabs` permission lets the extension compare hostnames, while `activeTab` grants access to read page content when you click the icon. Older browsers without `sidePanel.close()` require you to close the sidebar manually after a site change.
+The sidebar and floating reader stay open when you switch tabs or sites. An open chat or unsent draft stays with its original page. Choose **Refresh page** to start a new reading session on the active page. The `tabs` permission lets the reader identify the active page. If the reader asks for access to a page, click the extension icon on that tab to grant `activeTab` access.
 
 ## Use FreeLLMAPI
 
@@ -27,24 +27,28 @@ An open chat or unsent draft stays with its original page when you switch tabs o
 
 1. Run the [Windows desktop app](https://apps.microsoft.com/detail/9PBN6G8K2B7F), or use the [Docker or Node.js setup](https://github.com/tashfeenahmed/freellmapi/blob/main/docs/en/install/01-install.md) on your computer or a separate server.
 2. Open the FreeLLMAPI dashboard, add at least one upstream provider key under **Keys**, and copy the **unified API key**. The desktop app also offers **Copy Key** in its tray menu.
-3. In the extension, open **Settings** → **Model settings** and create a profile with these values.
+3. In the extension, open **Settings** → **Model settings** and click **Add profile**. Enter these values in the modal.
 
-   | Field | Value |
-   | --- | --- |
-   | Profile name | `FreeLLMAPI` |
-   | Provider | **OpenAI-compatible (local or hosted)** |
-   | Base URL | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
-   | Model ID | `auto` to use the gateway's fallback chain |
-   | API key | The unified API key from FreeLLMAPI |
-   | Custom headers and advanced model options | Leave headers blank and both toggles off to start |
+   | Field                                     | Value                                                                                                                                                                                                    |
+   | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Profile name                              | `FreeLLMAPI`                                                                                                                                                                                             |
+   | Provider                                  | **FreeLLM**                                                                                                                                                                                              |
+   | Type                                      | **Chat**                                                                                                                                                                                                 |
+   | Base URL                                  | `http://127.0.0.1:31415/v1` for the desktop app by default, or `http://localhost:3001/v1` for the default server install on the same computer. For a remote instance, use its HTTPS URL ending in `/v1`. |
+   | Model ID                                  | `auto` to use the gateway's fallback chain                                                                                                                                                               |
+   | API key                                   | The unified API key from FreeLLMAPI                                                                                                                                                                      |
+   | Custom headers and advanced model options | Leave headers blank and both toggles off to start                                                                                                                                                        |
 
-4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it. You can also select the profile for **System 1** and test a fresh reading session.
+4. Save the profile, allow endpoint access if Chrome prompts, and select it as the **Explanation model**. Open a technical page and choose **Learn this page** to test it.
+5. To use FreeLLM’s dedicated decision models for source classification, add a separate profile with **FreeLLM** as the **Provider** and **Decision** as the **Type**. Enter the full **Decision endpoint URL** ending in `/v1/decisions`, and use `auto` or a decision model ID. Select it as the **System 1 model**.
 
 Keep the gateway running while you use the extension. When the gateway routes to a cloud provider, that provider receives the model request, which can include page excerpts, questions, and relevant saved preferences.
 
 ## Conversation history
 
-Open **History** to review completed questions and answers by reading session. Each reply stays available in this browser for 30 days. Use **Clear history** to delete the archive at any time. The archive is for browsing, and follow-up questions use the active chat for context.
+Open **History**, expand a conversation, and choose **Resume conversation** to continue in **Read**, even after closing the original tab. The reader restores the captured source, explanation, and saved replies. Conversations saved before this feature remain available to read in History.
+
+Completed replies stay in this browser for 30 days. The captured source stays while its latest saved reply is retained. **Clear history** deletes the archive, including its source snapshots. When you send a follow-up, the selected model receives relevant excerpts and recent turns.
 
 ## Personalize it
 
@@ -66,7 +70,7 @@ The **Repository architecture** map shows how the components identified in the e
 
 ## Learn a documentation site
 
-Open a documentation page and choose **Learn docs site**. Allow access to that site when prompted. The reader uses the current page and up to four linked pages on the same origin to generate a suggested reading path and answer follow-up questions with citations. Expand **Documentation pages read** to see the sources. Linked pages must serve readable HTML directly and are fetched without browser cookies. Use **Learn this page** to return to a single-page explanation.
+Open a documentation page, check **Include related docs**, and choose **Learn this page**. Allow access to that site when prompted. The overview uses the current page and up to four directly linked pages on the same origin. For follow-up questions, the reader searches those pages and up to eight more from the same documentation section, fetched one link farther out. The search collection lives in the reader session. Expand **Documentation pages read** for overview sources or the answer's **Activity** for the pages selected for that question. Linked pages must serve readable HTML directly and are fetched without browser cookies. To return to a single page, uncheck **Include related docs** and choose **Explain again**.
 
 ## Learn a YouTube video
 
@@ -87,3 +91,5 @@ The browser test opens the native side panel on a local fixture page and uses a 
 ## Sidebar components
 
 Reuse the shadcn/ui components in `src/components/ui`. The root `components.json` configures the Base UI Nova registry and the sidebar theme.
+
+See the [roadmap](docs/ROADMAP.md) for upcoming features.

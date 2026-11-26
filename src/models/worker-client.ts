@@ -1,14 +1,22 @@
-import { decisionSchemas } from './decision-schemas.ts';
-import type { ModelGateway } from './gateway.ts';
-import { InsecureModelEndpointError } from './profiles.ts';
+import type { ModelGateway } from "./gateway.ts";
+
+import { decisionSchemas } from "./decision-schemas.ts";
+import { FreeLlmDecisionError } from "./freellm-decisions.ts";
+import { DecisionEndpointAsChatError, InsecureModelEndpointError, isNativeDecision } from "./profiles.ts";
 import {
-  modelPortName, modelSettingsChannel, type ModelCommand, type ModelReply, type SettingsCommand, type SettingsReply,
-} from './worker-protocol.ts';
+  modelPortName,
+  modelSettingsChannel,
+  type ModelCommand,
+  type ModelReply,
+  type SettingsCommand,
+  type SettingsReply,
+} from "./worker-protocol.ts";
 
 export async function updateModelSettings(command: SettingsCommand) {
-  const failure = 'Could not reach model settings. Reload the extension and try again.';
+  const failure = "Could not reach model settings. Reload the extension and try again.";
   const worker = (await navigator.serviceWorker.getRegistration())?.active;
-  if (!worker) throw new Error(failure);
+  if (!worker)
+    throw new Error(failure);
 
   const { port1, port2 } = new MessageChannel();
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -18,9 +26,11 @@ export async function updateModelSettings(command: SettingsCommand) {
       timeout = setTimeout(() => reject(new Error(failure)), 15_000);
       worker.postMessage({ channel: modelSettingsChannel, command }, [port2]);
     });
-    if ('error' in reply) throw new Error(reply.error);
+    if ("error" in reply)
+      throw new Error(reply.error);
     return reply.settings;
-  } finally {
+  }
+  finally {
     clearTimeout(timeout);
     port1.close();
     port2.close();
@@ -29,11 +39,11 @@ export async function updateModelSettings(command: SettingsCommand) {
 
 export class ModelProfileChangedError extends Error {
   constructor() {
-    super('The model profile changed in another window. Reopen the reader and try again.');
+    super("The model profile changed in another window. Reopen the reader and try again.");
   }
 }
 
-async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncGenerator<Exclude<ModelReply, { type: 'error' }>> {
+async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncGenerator<Exclude<ModelReply, { type: "error" }>> {
   signal.throwIfAborted();
   const port = chrome.runtime.connect({ name: modelPortName });
   let messages: ModelReply[] = [];
@@ -55,18 +65,21 @@ async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncG
 
   port.onMessage.addListener(receive);
   port.onDisconnect.addListener(loseConnection);
-  signal.addEventListener('abort', stop, { once: true });
+  signal.addEventListener("abort", stop, { once: true });
   // Chrome resets the worker's idle timer on port messages, including during quiet model calls.
   const heartbeat = setInterval(() => {
-    if (disconnected || signal.aborted) return;
-    try { port.postMessage({ type: 'keep-alive' }); } catch { loseConnection(); }
+    if (disconnected || signal.aborted)
+      return;
+    try { port.postMessage({ type: "keep-alive" }); }
+    catch { loseConnection(); }
   }, 20_000);
   try {
     port.postMessage(command);
     while (true) {
       signal.throwIfAborted();
       if (!messages.length) {
-        if (disconnected) throw new Error('The model connection closed.');
+        if (disconnected)
+          throw new Error("The model connection closed.");
         await new Promise<void>((resolve) => { wake = resolve; });
         continue;
       }
@@ -74,40 +87,54 @@ async function* requestModel(command: ModelCommand, signal: AbortSignal): AsyncG
       messages = [];
       for (const message of batch) {
         signal.throwIfAborted();
-        if (message.type === 'error') {
-          if (message.code === 'endpoint') throw new InsecureModelEndpointError();
-          if (message.code === 'profile-changed') throw new ModelProfileChangedError();
-          throw new Error('The model request failed.');
+        if (message.type === "error") {
+          if (message.code === "endpoint")
+            throw new InsecureModelEndpointError();
+          if (message.code === "decision-endpoint-as-chat")
+            throw new DecisionEndpointAsChatError();
+          if (message.code === "profile-changed")
+            throw new ModelProfileChangedError();
+          if (message.code === "decision")
+            throw new FreeLlmDecisionError(message.failure);
+          throw new Error("The model request failed.");
         }
         yield message;
-        if (message.type === 'done') return;
+        if (message.type === "done")
+          return;
       }
     }
-  } finally {
+  }
+  finally {
     clearInterval(heartbeat);
-    signal.removeEventListener('abort', stop);
+    signal.removeEventListener("abort", stop);
     port.onMessage.removeListener(receive);
     port.onDisconnect.removeListener(loseConnection);
     stop();
   }
 }
 
-export function createWorkerGateway(main: ModelCommand['profile'], system: ModelCommand['profile']): ModelGateway {
-  const binding = ({ id, provider, endpoint, model }: ModelCommand['profile']) => ({ id, provider, endpoint, model });
+export function createWorkerGateway(main: ModelCommand["profile"], system: ModelCommand["profile"]): ModelGateway {
+  const binding = ({ id, provider, type, endpoint, chatEndpoint, model }: ModelCommand["profile"]) => ({ id, provider, type, endpoint, chatEndpoint, model });
   const mainProfile = binding(main);
   const systemProfile = binding(system);
   return {
-    async *stream(request, signal) {
+    async* stream(request, signal) {
       for await (const reply of requestModel({ profile: mainProfile, request }, signal)) {
-        if (reply.type === 'chunk') yield reply.text;
+        if (reply.type === "chunk")
+          yield reply.text;
       }
     },
     async decide(request, schema, signal) {
       const names = Object.keys(decisionSchemas) as (keyof typeof decisionSchemas)[];
-      const decision = names.find((name) => decisionSchemas[name] === schema);
-      if (!decision) throw new Error('Unknown model decision schema.');
-      for await (const reply of requestModel({ profile: systemProfile, request, decision }, signal)) {
-        if (reply.type === 'done') return reply.decision;
+      const decision = names.find(name => decisionSchemas[name] === schema);
+      if (!decision)
+        throw new Error("Unknown model decision schema.");
+      const profile = decision === "diagram" || (isNativeDecision(systemProfile) && decision !== "route")
+        ? mainProfile
+        : systemProfile;
+      for await (const reply of requestModel({ profile, request, decision }, signal)) {
+        if (reply.type === "done")
+          return reply.decision;
       }
       return undefined;
     },

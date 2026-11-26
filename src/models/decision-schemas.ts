@@ -1,14 +1,23 @@
-import { z } from 'zod';
-import { choiceSchema } from '../memory/types.ts';
+import { z } from "zod";
+import { choiceSchema } from "../memory/types.ts";
 
 export const decisionSchemas = {
-  route: z.object({ sourceType: z.enum(['page', 'paper', 'docs', 'repo']), diagram: z.boolean() }),
+  route: z.object({ sourceType: z.enum(["page", "paper", "docs", "repo"]), diagram: z.boolean() }),
   observations: z.object({ observations: z.array(z.object({
     choice: choiceSchema,
     topicSpecific: z.boolean(),
     evidence: z.string().trim().min(1).max(200).optional(),
   })).max(3) }),
   suggestions: z.object({ questions: z.array(z.string().trim().min(4).max(140)).max(3) }),
+  diagram: z.object({
+    nodes: z.array(z.string().trim().min(1).max(48)).max(6),
+    connections: z.array(z.object({
+      from: z.number().int().min(0),
+      to: z.number().int().min(0),
+      label: z.string().trim().min(1).max(36),
+      evidence: z.string().trim().min(12).max(200),
+    })).max(8),
+  }),
   architecture: z.object({
     components: z.array(z.object({
       name: z.string().min(1).max(48),

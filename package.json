@@ -11,6 +11,7 @@
     "dev": "wxt --browser chrome",
     "build": "wxt build --browser chrome",
     "typecheck": "wxt prepare && tsc --noEmit",
+    "lint": "wxt prepare && eslint .",
     "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --experimental-test-isolation=none --test tests/*.test.ts",
     "test:browser": "node tests/smoke-extension.mjs"
   },
@@ -30,11 +31,14 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
     "shiki": "^4.6.0",
     "zod": "4.6.7",
     "zustand": "5.1.0"
   },
   "devDependencies": {
+    "@antfu/eslint-config": "^6.7.3",
+    "@eslint-react/eslint-plugin": "^2.13.0",
     "@tailwindcss/vite": "4.3.5",
     "@types/chrome": "0.3.7",
     "@types/jsdom": "21.1.7",
@@ -42,6 +46,10 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@wxt-dev/module-react": "1.2.2",
+    "eslint": "9.39.5",
+    "eslint-plugin-format": "^2.0.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.4.26",
     "fake-indexeddb": "6.2.8",
     "jsdom": "26.1.0",
     "playwright-core": "1.65.1",
@@ -50,5 +58,10 @@
     "tw-animate-css": "1.4.0",
     "typescript": "5.9.3",
     "wxt": "0.21.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "oxfmt@0.35.0>tinypool": "2.1.2"
+    }
   }
 }
