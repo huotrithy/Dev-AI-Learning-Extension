@@ -1,0 +1,108 @@
+name: Build draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing Git tag, such as v0.1.0
+        required: true
+        type: string
+      prerelease:
+        description: Mark the new draft as a pre-release
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package tagged source
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Check the package version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            echo "::error::The release tag must match package.json (expected v$version)."
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm exec wxt zip --browser chrome
+
+      - name: Save the extension ZIP
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chrome-extension
+          path: .output/dev-ai-learning-extension-*-chrome.zip
+          if-no-files-found: error
+          overwrite: true
+
+  draft:
+    name: Attach ZIP to a draft GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Retrieve the extension ZIP
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: chrome-extension
+
+      - name: Create or update the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          zip="dev-ai-learning-extension-${RELEASE_TAG#v}-chrome.zip"
+          test -f "$zip"
+
+          if is_draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
+            if [[ "$is_draft" != true ]]; then
+              echo "::error::A published release already exists for $RELEASE_TAG."
+              exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "$zip"
+            exit
+          fi
+
+          cat > release-notes.md <<'EOF'
+          ## Install on Chrome or Edge
+
+          1. Download the extension ZIP under **Assets** and extract it.
+          2. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+          3. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+          4. Open a technical page and click the extension icon. Add a model profile under **Settings → Model settings**, then return to **Read** and select **Learn this page**.
+          EOF
+
+          gh release create "$RELEASE_TAG" "$zip" --verify-tag --draft \
+            --prerelease="$PRERELEASE" --title "$RELEASE_TAG" --notes-file release-notes.md
