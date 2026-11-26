@@ -1,8 +1,10 @@
 import type { z } from "zod";
-import { decisionSchemas } from "../models/decision-schemas.ts";
+
 import type { ModelGateway } from "../models/gateway.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile, RepositorySource } from "../page/github.ts";
+
+import { decisionSchemas } from "../models/decision-schemas.ts";
 import { learningLimits } from "./config.ts";
 import { pageContext } from "./context.ts";
 import { mermaidFlowchart } from "./flowchart.ts";
@@ -10,14 +12,14 @@ import { architectureInstructions } from "./prompts.ts";
 
 const architectureSchema = decisionSchemas.architecture;
 
-export interface RepositoryArchitecture {
+export type RepositoryArchitecture = {
   components: {
     id: number;
     name: string;
     files: Pick<RepositoryFile, "path" | "url">[];
   }[];
   connections: z.infer<typeof architectureSchema>["connections"];
-}
+};
 
 export async function readArchitecture(
   page: PageSource & { repository: RepositorySource },

@@ -11,12 +11,12 @@ export type ActivityStatus
     | "stopped"
     | "error"
     | "fallback";
-export interface ActivityStep {
+export type ActivityStep = {
   label: string;
   detail?: string;
   files?: Pick<RepositoryFile, "path" | "url">[];
   status: ActivityStatus;
-}
+};
 
 export function createActivity(
   signal: AbortSignal,

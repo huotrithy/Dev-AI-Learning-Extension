@@ -4,12 +4,12 @@ export type Provider = typeof providers[number];
 export const profileTypes = ["chat", "decision"] as const;
 export type ProfileType = typeof profileTypes[number];
 
-export interface ModelHeader {
+export type ModelHeader = {
   name: string;
   value: string;
-}
+};
 
-export interface ModelProfileDetails {
+export type ModelProfileDetails = {
   id: string;
   label: string;
   provider: Provider;
@@ -19,31 +19,31 @@ export interface ModelProfileDetails {
   chatEndpoint?: string;
   toolCalls: boolean;
   disableThinking: boolean;
-}
+};
 
-export interface ModelProfile extends ModelProfileDetails {
+export type ModelProfile = {
   key: string;
   customHeaders?: ModelHeader[];
   revision?: string;
-}
+} & ModelProfileDetails;
 
-export interface PublicModelProfile extends ModelProfileDetails {
+export type PublicModelProfile = {
   keySaved: boolean;
   headerNames: string[];
   revision: string;
-}
+} & ModelProfileDetails;
 
-export interface PublicModelSettings {
+export type PublicModelSettings = {
   profiles: PublicModelProfile[];
   main: string;
   system: string;
-}
+};
 
-export interface ModelSettings {
+export type ModelSettings = {
   profiles: ModelProfile[];
   main: string;
   system: string;
-}
+};
 
 export const defaultSettings = { profiles: [], main: "", system: "" };
 
@@ -137,7 +137,7 @@ export function modelRequestEndpoint(profile: ModelProfile): URL {
   return endpoint;
 }
 
-export function restrictModelStorage(): Promise<void> {
+export async function restrictModelStorage(): Promise<void> {
   return chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 }
 

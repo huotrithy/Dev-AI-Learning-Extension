@@ -1,5 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import type { FormEvent } from "react";
+
 import { liveQuery } from "dexie";
+import { useEffect, useState } from "react";
+
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
@@ -7,8 +10,11 @@ import { Checkbox } from "@/src/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/src/components/ui/collapsible";
 import { Label } from "@/src/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/src/components/ui/native-select";
+
+import type { Choice, MemoryRecord } from "../../src/memory/types.ts";
+
 import { choiceLabel } from "../../src/memory/policy.ts";
-import { choiceSchema, options, type Choice, type MemoryRecord } from "../../src/memory/types.ts";
+import { choiceSchema, options } from "../../src/memory/types.ts";
 import { invalidateMemoryWork, memory } from "./reader.ts";
 
 const kinds: Record<Choice["kind"], string> = {
@@ -37,7 +43,7 @@ export function MemorySettings() {
   }
 
   useEffect(() => {
-    const subscription = liveQuery(() => Promise.all([memory.status(), memory.list()])).subscribe({
+    const subscription = liveQuery(async () => Promise.all([memory.status(), memory.list()])).subscribe({
       next: ([status, items]) => { setEnabled(status.enabled); setRecords(items); },
       error: () => setError("Could not open local memory."),
     });
@@ -94,7 +100,7 @@ export function MemorySettings() {
           checked={enabled ?? false}
           disabled={enabled === undefined || busy}
           onCheckedChange={(checked) => {
-            void change(() => memory.setEnabled(checked), checked ? "Memory is on." : "Memory is paused.");
+            void change(async () => memory.setEnabled(checked), checked ? "Memory is on." : "Memory is paused.");
           }}
         />
         <Label htmlFor="learning-memory">Use learning memory</Label>

@@ -1,12 +1,15 @@
-import { decisionSchemas } from "../models/decision-schemas.ts";
 import type { ModelGateway } from "../models/gateway.ts";
 import type { DocsReference } from "../page/docs.ts";
 import type { PageSource } from "../page/extract.ts";
 import type { RepositoryFile } from "../page/github.ts";
 import type { ActivityStep } from "./activity.ts";
 import type { AnswerRevision, AnswerStyle } from "./answer-style.ts";
-import { readArchitecture, type RepositoryArchitecture } from "./architecture.ts";
-import { learningLimits, type Depth, type Section } from "./config.ts";
+import type { RepositoryArchitecture } from "./architecture.ts";
+import type { Depth, Section } from "./config.ts";
+
+import { decisionSchemas } from "../models/decision-schemas.ts";
+import { readArchitecture } from "./architecture.ts";
+import { learningLimits } from "./config.ts";
 import { pageContext } from "./context.ts";
 import { readPageDiagram } from "./page-diagram.ts";
 import { answerPrompt, classificationInstructions, explanationPrompt, introductionPrompt, revisionPrompt, sectionPrompt } from "./prompts.ts";
@@ -14,7 +17,7 @@ import { answerPrompt, classificationInstructions, explanationPrompt, introducti
 export type LearningEvent
   = | { section: Section; text: string }
     | { section: "architecture"; map: RepositoryArchitecture | null };
-export interface ChatTurn {
+export type ChatTurn = {
   id?: string;
   question: string;
   answer: string;
@@ -23,7 +26,7 @@ export interface ChatTurn {
   repositoryFiles?: Pick<RepositoryFile, "path" | "url">[];
   repositoryNotice?: string;
   activity?: ActivityStep[];
-}
+};
 
 const routeSchema = decisionSchemas.route;
 

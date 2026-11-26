@@ -1,30 +1,30 @@
 import type { PageSource } from "./extract.ts";
 
-export interface YouTubeVideo {
+export type YouTubeVideo = {
   id: string;
   url: string;
-}
+};
 
-interface CaptionExcerpt {
+type CaptionExcerpt = {
   seconds: number;
   end: number;
   time: string;
   url: string;
   text: string;
-}
+};
 
-interface TranscriptSnapshot {
+type TranscriptSnapshot = {
   id: string;
   title: string;
   truncated: boolean;
   rows: { timestamp: string; text: string }[];
-}
+};
 
-export interface VideoTranscript {
+export type VideoTranscript = {
   id: string;
   excerpts: CaptionExcerpt[];
   truncated: boolean;
-}
+};
 
 export function youtubeVideo(href: string): YouTubeVideo | undefined {
   let url: URL;

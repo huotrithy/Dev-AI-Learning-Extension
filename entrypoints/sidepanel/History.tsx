@@ -1,10 +1,15 @@
+import type { ReactNode } from "react";
+
 import { liveQuery } from "dexie";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
-import { chatHistory, historyRetentionDays, type ResumableConversation, type SavedConversation } from "../../src/learning/history.ts";
 
+import type { ResumableConversation, SavedConversation } from "../../src/learning/history.ts";
+
+import { chatHistory, historyRetentionDays } from "../../src/learning/history.ts";
 import { ChatTurn } from "./ChatTurn.tsx";
 
 const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -28,7 +33,7 @@ export function History({ renderAnswer, onResume, activeSession, hasDraft, worki
   const resumeRequest = useRef<AbortController>(null);
 
   useEffect(() => {
-    const subscription = liveQuery(() => chatHistory.list()).subscribe({
+    const subscription = liveQuery(async () => chatHistory.list()).subscribe({
       next: setConversations,
       error: () => setLoadingError(true),
     });
@@ -118,8 +123,20 @@ export function History({ renderAnswer, onResume, activeSession, hasDraft, worki
                                     <Alert>
                                       <AlertDescription>Discard the current draft and resume this conversation?</AlertDescription>
                                       <div className="button-row">
-                                        <Button size="sm" disabled={working || clearing} onClick={() => void resume(id)}>Discard draft and resume</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setConfirmResume(undefined)}>Cancel</Button>
+                                        <Button
+                                          size="sm"
+                                          disabled={working || clearing}
+                                          onClick={() => void resume(id)}
+                                        >
+                                          Discard draft and resume
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setConfirmResume(undefined)}
+                                        >
+                                          Cancel
+                                        </Button>
                                       </div>
                                     </Alert>
                                   )
@@ -140,7 +157,11 @@ export function History({ renderAnswer, onResume, activeSession, hasDraft, worki
                                   )
                               : <p className="muted">This older conversation has no saved source.</p>}
                             {turns.map(({ id: turnId, question, answer }) => (
-                              <ChatTurn key={turnId} question={question} heading="h3">
+                              <ChatTurn
+                                key={turnId}
+                                question={question}
+                                heading="h3"
+                              >
                                 {renderAnswer(answer)}
                               </ChatTurn>
                             ))}

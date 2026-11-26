@@ -1,26 +1,34 @@
-import { create } from "zustand";
 import { liveQuery } from "dexie";
-import { LatestRequest, streamAnswer, streamLearning, type ChatTurn } from "../../src/learning/session.ts";
+import { create } from "zustand";
+
+import type { ActivityStep } from "../../src/learning/activity.ts";
 import type { AnswerStyle } from "../../src/learning/answer-style.ts";
-import { introductionQuestion } from "../../src/learning/prompts.ts";
-import { createActivity, trackModelActivity, type ActivityStep } from "../../src/learning/activity.ts";
-import { chatHistory, type ResumableConversation } from "../../src/learning/history.ts";
-import { defaultDepth, learningLimits, type Depth, type Section } from "../../src/learning/config.ts";
 import type { RepositoryArchitecture } from "../../src/learning/architecture.ts";
-import { extractObservations, prepareSuggestions, type UserTurn } from "../../src/memory/observation.ts";
+import type { Depth, Section } from "../../src/learning/config.ts";
+import type { ResumableConversation } from "../../src/learning/history.ts";
+import type { ChatTurn } from "../../src/learning/session.ts";
+import type { UserTurn } from "../../src/memory/observation.ts";
+import type { ModelGateway } from "../../src/models/gateway.ts";
+import type { PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
+import type { PageSource } from "../../src/page/extract.ts";
+
+import { createActivity, trackModelActivity } from "../../src/learning/activity.ts";
+import { defaultDepth, learningLimits } from "../../src/learning/config.ts";
+import { chatHistory } from "../../src/learning/history.ts";
+import { introductionQuestion } from "../../src/learning/prompts.ts";
+import { LatestRequest, streamAnswer, streamLearning } from "../../src/learning/session.ts";
+import { extractObservations, prepareSuggestions } from "../../src/memory/observation.ts";
 import { pageScope } from "../../src/memory/policy.ts";
 import { DexieMemoryRepository, runWithCurrentMemory } from "../../src/memory/repository.ts";
 import { emptyMemory } from "../../src/memory/types.ts";
-import { InsecureModelEndpointError, isNativeDecision, type PublicModelSettings as ModelSettings } from "../../src/models/profiles.ts";
+import { InsecureModelEndpointError, isNativeDecision } from "../../src/models/profiles.ts";
 import { createWorkerGateway, ModelProfileChangedError } from "../../src/models/worker-client.ts";
-import type { ModelGateway } from "../../src/models/gateway.ts";
 import { readTab, readYouTube } from "../../src/page/active-tab.ts";
 import { docsReferences, loadDocs, searchDocs } from "../../src/page/docs.ts";
-import type { PageSource } from "../../src/page/extract.ts";
 import { githubApiPermission, githubRepository, loadRepository, repositoryHome, RepositoryReadError, traceRepository } from "../../src/page/github.ts";
 import { youtubeVideo } from "../../src/page/youtube.ts";
 
-interface ReaderState {
+type ReaderState = {
   page?: PageSource;
   tabId?: number;
   session: string;
@@ -38,7 +46,7 @@ interface ReaderState {
   error: string;
   notice: string;
   question: string;
-}
+};
 
 const initialReader: ReaderState = {
   session: "",
@@ -106,7 +114,7 @@ export function invalidateMemoryWork(): void {
 
 export function watchMemoryChanges(): () => void {
   let revision: number | undefined;
-  const subscription = liveQuery(() => memory.status()).subscribe({
+  const subscription = liveQuery(async () => memory.status()).subscribe({
     next: (status) => {
       if (revision !== undefined && revision !== status.revision)
         invalidateMemoryWork();
@@ -120,7 +128,7 @@ export function watchMemoryChanges(): () => void {
 async function readMemory(scope: string) {
   const status = await memory.status().catch(() => null);
   const context = status?.enabled
-    ? await runWithCurrentMemory(memory, status.revision, () => memory.recall(scope)).catch(() => undefined)
+    ? await runWithCurrentMemory(memory, status.revision, async () => memory.recall(scope)).catch(() => undefined)
     : undefined;
   return { status, context: context ?? emptyMemory };
 }

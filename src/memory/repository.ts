@@ -1,15 +1,15 @@
-import { Dexie, type Table } from "dexie";
+import type { Table } from "dexie";
+
+import { Dexie } from "dexie";
+
+import type { Choice, MemoryContext, MemoryRecord, MemoryRepository, MemoryStatus, Observation, ObservationBatch } from "./types.ts";
+
 import { isDurable, memoryId, recallRecords } from "./policy.ts";
 import {
+
   choiceSchema,
   emptyMemory,
-  type Choice,
-  type MemoryContext,
-  type MemoryRecord,
-  type MemoryRepository,
-  type MemoryStatus,
-  type Observation,
-  type ObservationBatch,
+
 } from "./types.ts";
 
 type SettingsRow = MemoryStatus & { id: "settings" };

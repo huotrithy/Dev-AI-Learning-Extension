@@ -1,5 +1,7 @@
+import type { ReaderSnapshot } from "./reader.ts";
+
 import { findFloatingReader, floatingReaderUrl, readerSourceWindowParam } from "../../src/learning/reader-window.ts";
-import { snapshotReader, type ReaderSnapshot } from "./reader.ts";
+import { snapshotReader } from "./reader.ts";
 
 export type View = "read" | "history" | "memory" | "settings";
 type Handoff = { id: string; expires: number; reader: ReaderSnapshot; view: View };

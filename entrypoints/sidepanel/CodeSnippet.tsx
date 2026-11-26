@@ -1,5 +1,6 @@
-import { useState } from "react";
 import { WrapText } from "lucide-react";
+import { useState } from "react";
+
 import { Button } from "@/src/components/ui/button";
 import {
   CodeBlock,

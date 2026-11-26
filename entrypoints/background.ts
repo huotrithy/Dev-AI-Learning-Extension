@@ -15,7 +15,7 @@ export default defineBackground(() => {
       const shown = floating
         ? chrome.windows.update(floating.windowId, { focused: true })
         : chrome.sidePanel.open({ windowId });
-      void shown.then(() => chrome.runtime.sendMessage({ type: pageAccessGranted, tabId })).catch(() => undefined);
+      void shown.then(async () => chrome.runtime.sendMessage({ type: pageAccessGranted, tabId })).catch(() => undefined);
     });
   });
 });

@@ -1,12 +1,14 @@
 /// <reference lib="webworker" />
 
+import type { ModelReply } from "./worker-protocol.ts";
+
 import { readerPath } from "../learning/reader-window.ts";
 import { decisionSchemas } from "./decision-schemas.ts";
 import { classifyWithFreeLlm, FreeLlmDecisionError } from "./freellm-decisions.ts";
 import { createGateway } from "./gateway.ts";
 import { DecisionEndpointAsChatError, hostPermission, InsecureModelEndpointError, isNativeDecision, loadSettings, modelRequestEndpoint, profileType } from "./profiles.ts";
 import { handleModelSettings } from "./settings-worker.ts";
-import { modelCommandSchema, modelPortName, modelSettingsChannel, type ModelReply } from "./worker-protocol.ts";
+import { modelCommandSchema, modelPortName, modelSettingsChannel } from "./worker-protocol.ts";
 
 function isReaderUrl(url?: string): boolean {
   return url?.split(/[?#]/, 1)[0] === chrome.runtime.getURL(readerPath);

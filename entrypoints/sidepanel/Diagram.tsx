@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { Button } from "@/src/components/ui/button";
 
 export function Diagram({ source, description = "Flowchart of the main relationships described on this page" }: { source: string; description?: string }) {

@@ -1,26 +1,27 @@
-import * as React from "react";
+import type * as React from "react";
+import type { GrammarState, HighlighterCore } from "shiki/core";
+
 import {
   createHighlighterCore,
-  type GrammarState,
-  type HighlighterCore,
+
 } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 // Add the languages you need. Each one loads the first time it is used.
 const languages = {
-  bash: () => import("shiki/langs/shellscript.mjs"),
-  css: () => import("shiki/langs/css.mjs"),
-  diff: () => import("shiki/langs/diff.mjs"),
-  html: () => import("shiki/langs/html.mjs"),
-  javascript: () => import("shiki/langs/javascript.mjs"),
-  json: () => import("shiki/langs/json.mjs"),
-  jsx: () => import("shiki/langs/jsx.mjs"),
-  markdown: () => import("shiki/langs/markdown.mjs"),
-  python: () => import("shiki/langs/python.mjs"),
-  sql: () => import("shiki/langs/sql.mjs"),
-  tsx: () => import("shiki/langs/tsx.mjs"),
-  typescript: () => import("shiki/langs/typescript.mjs"),
-  yaml: () => import("shiki/langs/yaml.mjs"),
+  bash: async () => import("shiki/langs/shellscript.mjs"),
+  css: async () => import("shiki/langs/css.mjs"),
+  diff: async () => import("shiki/langs/diff.mjs"),
+  html: async () => import("shiki/langs/html.mjs"),
+  javascript: async () => import("shiki/langs/javascript.mjs"),
+  json: async () => import("shiki/langs/json.mjs"),
+  jsx: async () => import("shiki/langs/jsx.mjs"),
+  markdown: async () => import("shiki/langs/markdown.mjs"),
+  python: async () => import("shiki/langs/python.mjs"),
+  sql: async () => import("shiki/langs/sql.mjs"),
+  tsx: async () => import("shiki/langs/tsx.mjs"),
+  typescript: async () => import("shiki/langs/typescript.mjs"),
+  yaml: async () => import("shiki/langs/yaml.mjs"),
 };
 
 const aliases: Record<string, keyof typeof languages> = {
@@ -37,7 +38,7 @@ const aliases: Record<string, keyof typeof languages> = {
 
 let highlighter: Promise<HighlighterCore> | undefined;
 
-function getHighlighter() {
+async function getHighlighter() {
   highlighter ??= createHighlighterCore({
     themes: [
       import("shiki/themes/github-light.mjs"),

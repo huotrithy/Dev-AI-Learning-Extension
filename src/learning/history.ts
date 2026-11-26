@@ -1,55 +1,59 @@
-import { Dexie, type Table } from "dexie";
-import { docsPageUrl } from "../page/docs.ts";
+import type { Table } from "dexie";
+
+import { Dexie } from "dexie";
+
 import type { PageSource } from "../page/extract.ts";
-import { youtubeVideo } from "../page/youtube.ts";
-import type { RepositoryArchitecture } from "./architecture.ts";
 import type { AnswerStyle } from "./answer-style.ts";
+import type { RepositoryArchitecture } from "./architecture.ts";
 import type { Depth, Section } from "./config.ts";
 import type { ChatTurn } from "./session.ts";
+
+import { docsPageUrl } from "../page/docs.ts";
+import { youtubeVideo } from "../page/youtube.ts";
 
 export const historyRetentionDays = 30;
 const retention = historyRetentionDays * 24 * 60 * 60 * 1_000;
 
 type SavedTurn = Pick<ChatTurn, "question" | "answer" | "style" | "docsReferences" | "repositoryFiles"> & { id: string };
 
-interface HistoryRow extends SavedTurn {
+type HistoryRow = {
   session: string;
   title: string;
   url: string;
   timestamp: number;
-}
+} & SavedTurn;
 
-export interface SavedConversation {
+export type SavedConversation = {
   id: string;
   title: string;
   url: string;
   updatedAt: number;
   canResume: boolean;
   turns: SavedTurn[];
-}
+};
 
-interface ReaderContext {
+type ReaderContext = {
   depth: Depth;
   sections: Partial<Record<Section, string>>;
   introStyle?: AnswerStyle;
   architecture?: RepositoryArchitecture | null;
-}
+};
 
-interface SavedSource extends ReaderContext {
+type SavedSource = {
   page: PageSource;
-}
+} & ReaderContext;
 
-interface SourceRow {
+type SourceRow = {
   session: string;
   timestamp: number;
   source: SavedSource;
-}
+};
 
-export interface ResumableConversation {
+export type ResumableConversation = {
   id: string;
   source: SavedSource;
   turns: SavedTurn[];
-}
+};
 
 function savedTurn({ id, question, answer, style, docsReferences, repositoryFiles }: SavedTurn): SavedTurn {
   return {
@@ -128,7 +132,7 @@ export class ChatHistory {
 
   async list(now = Date.now()): Promise<SavedConversation[]> {
     const cutoff = now - retention;
-    const [rows, sessions] = await this.db.transaction("r", this.turns, this.sources, () => Promise.all([
+    const [rows, sessions] = await this.db.transaction("r", this.turns, this.sources, async () => Promise.all([
       this.turns.where("timestamp").above(cutoff).toArray(),
       this.sources.where("timestamp").above(cutoff).primaryKeys(),
     ]));

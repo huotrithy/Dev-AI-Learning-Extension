@@ -1,8 +1,11 @@
-import { Fragment, useEffect, useState, type FormEvent } from "react";
-import { createRoot } from "react-dom/client";
+import type { FormEvent } from "react";
+
 import { ArrowUp } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import { Alert, AlertDescription } from "@/src/components/ui/alert";
 import { Button } from "@/src/components/ui/button";
 import { Checkbox } from "@/src/components/ui/checkbox";
@@ -12,34 +15,37 @@ import {
   NativeSelectOption,
 } from "@/src/components/ui/native-select";
 import { Textarea } from "@/src/components/ui/textarea";
-import { depthLabels, learningLimits, sections, type Depth, type Section } from "../../src/learning/config.ts";
+
+import type { Depth, Section } from "../../src/learning/config.ts";
+import type { PublicModelSettings as Settings } from "../../src/models/profiles.ts";
+import type { View } from "./display.ts";
+
+import { depthLabels, learningLimits, sections } from "../../src/learning/config.ts";
 import { chatHistory } from "../../src/learning/history.ts";
 import { pageAccessGranted } from "../../src/learning/reader-window.ts";
-import { githubRepository } from "../../src/page/github.ts";
-import { docsReferences } from "../../src/page/docs.ts";
-import { seekYouTube } from "../../src/page/active-tab.ts";
-import { youtubeVideo } from "../../src/page/youtube.ts";
 import {
   defaultSettings,
   modelEndpoint,
-  type PublicModelSettings as Settings,
+
 } from "../../src/models/profiles.ts";
 import { updateModelSettings } from "../../src/models/worker-client.ts";
-import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
+import { seekYouTube } from "../../src/page/active-tab.ts";
+import { docsReferences } from "../../src/page/docs.ts";
+import { githubRepository } from "../../src/page/github.ts";
+import { youtubeVideo } from "../../src/page/youtube.ts";
 import { AnswerFeedback } from "./AnswerFeedback.tsx";
+import { AppearanceSettings, useAppearance } from "./AppearanceSettings.tsx";
 import { ChatTurn } from "./ChatTurn.tsx";
 import { CodeSnippet } from "./CodeSnippet.tsx";
-import { ReaderActivity } from "./ReaderActivity.tsx";
+import { Diagram } from "./Diagram.tsx";
 import {
   floating,
   floatingSource,
   switchReaderWindow,
+
   watchHandoff,
-  type View,
 } from "./display.ts";
-import { Diagram } from "./Diagram.tsx";
 import { History } from "./History.tsx";
-import { RepositoryMap } from "./RepositoryMap.tsx";
 import { MemorySettings } from "./MemorySettings.tsx";
 import { ModelSettings } from "./ModelSettings.tsx";
 import {
@@ -56,6 +62,8 @@ import {
   useReader,
   watchMemoryChanges,
 } from "./reader.ts";
+import { ReaderActivity } from "./ReaderActivity.tsx";
+import { RepositoryMap } from "./RepositoryMap.tsx";
 import "./style.css";
 
 const depthId = "depth";
@@ -598,7 +606,7 @@ function App() {
                         key={reader.session}
                         style={reader.introStyle}
                         disabled={Boolean(reader.working) || pendingDocsScope}
-                        revise={style => reviseAnswer("intro", style, settings)}
+                        revise={async style => reviseAnswer("intro", style, settings)}
                       />
                     )}
                   </section>
@@ -655,7 +663,7 @@ function App() {
                   <AnswerFeedback
                     style={style}
                     disabled={Boolean(reader.working) || pendingDocsScope}
-                    revise={style => reviseAnswer(index, style, settings)}
+                    revise={async style => reviseAnswer(index, style, settings)}
                   />
                 )}
               </ChatTurn>

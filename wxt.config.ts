@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import { resolve } from "node:path";
 import { defineConfig } from "wxt";
 
 export default defineConfig({
@@ -15,6 +16,11 @@ export default defineConfig({
     optional_host_permissions: ["https://*/*", "http://*/*"],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+    },
+  },
+  hooks: {
+    "build:publicAssets": ({ config }, files) => {
+      files.push({ absoluteSrc: resolve(config.root, "LICENSE"), relativeDest: "LICENSE" });
     },
   },
   vite: () => ({ plugins: [tailwindcss()] }),

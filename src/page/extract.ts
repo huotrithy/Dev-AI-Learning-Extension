@@ -1,9 +1,10 @@
 import { Readability } from "@mozilla/readability";
-import type { RepositorySource } from "./github.ts";
+
 import type { DocsPage } from "./docs.ts";
+import type { RepositorySource } from "./github.ts";
 import type { VideoTranscript } from "./youtube.ts";
 
-export interface PageSource {
+export type PageSource = {
   title: string;
   url: string;
   text: string;
@@ -12,7 +13,7 @@ export interface PageSource {
   docs?: DocsPage[];
   docsIndex?: DocsPage[];
   video?: VideoTranscript;
-}
+};
 
 export function extractPage(document: Document): PageSource | null {
   const copy = document.cloneNode(true) as Document;

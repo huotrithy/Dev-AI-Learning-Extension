@@ -1,4 +1,5 @@
 import { Activity, Check, CircleAlert, Clock, Info, Square } from "lucide-react";
+
 import {
   Trace,
   TraceCollapsible,
@@ -8,6 +9,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/src/components/ui/trace";
+
 import type { ActivityStatus, ActivityStep } from "../../src/learning/activity.ts";
 
 const statusLabel: Record<ActivityStatus, string> = {
