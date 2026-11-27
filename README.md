@@ -1,6 +1,6 @@
 # Dev AI Learning Extension
 
-A Chrome side panel for learning technical pages with your own model. It streams an explanation, example, use cases, and a walkthrough. Read further by asking questions about the page or choosing a suggested follow-up.
+Learn from technical docs, blog posts, GitHub repositories, and YouTube transcripts with your own AI model. Open the Chrome or Edge side panel for explanations with examples and walkthroughs, then ask follow-up questions about the source. Use a local or hosted model and save your learning preferences in your browser.
 
 ## Load the extension
 
