@@ -4,6 +4,10 @@ Last updated November 27, 2026
 
 Dev AI Learning Extension helps you understand technical content in Microsoft Edge. This policy explains what the extension accesses, where it sends information, and how you can manage the data it saves.
 
+## What the publisher receives
+
+The publisher does not receive, collect, or store your extension usage data, including page content, chat messages, learning history, preferences, and model credentials. The extension has no publisher-operated backend, telemetry, or advertising. It runs in your browser and connects directly to the AI endpoint you configure. The publisher does not sell user data.
+
 ## Information the extension uses
 
 - **Reading sources.** While the reader is open, it uses the active tab's URL and title to identify the current source and can extract readable text from pages you have granted access to. When you use the corresponding feature, it can also read related documentation, excerpts from a public GitHub repository, or a transcript displayed on YouTube. It uses active-tab information and its own learning history. It has no access to Edge's browsing history database.
@@ -14,9 +18,9 @@ Dev AI Learning Extension helps you understand technical content in Microsoft Ed
 
 When you request an explanation or ask a follow-up, the extension sends the information needed for that request to the model endpoint you configure. This can include source URLs, titles and excerpts, questions, recent conversation turns, and relevant saved preferences. If you configure a separate decision model, it can receive excerpts or conversation context for tasks such as classifying the source or identifying learning preferences. The browser extension sends a profile's API key and custom headers to that profile's endpoint to authenticate or configure its requests. Endpoints that receive credentials must use HTTPS unless they run on the same device at a loopback address.
 
-You choose whether the destination is a local model, a hosted provider, or a gateway. A gateway may forward your request to its upstream providers. Hosted services may log or retain requests under their own privacy policies and settings. Clearing data in the extension affects the browser's copy only. For requests you have already sent, contact the provider or use its data controls.
+You choose the model and where it runs. If you connect a hosted provider or gateway, review its terms, privacy policy, and retention settings before sending content. A gateway may forward your request to upstream providers. Each service controls how it handles the requests it receives. Clearing data in the extension affects the browser's copy only. For requests you have already sent, contact the provider or use its data controls.
 
-Related documentation requests go to the documentation site. Public repository file requests go to the GitHub API. These requests omit browser cookies. The extension has no publisher-operated backend, advertising, or telemetry, and the publisher does not sell user data.
+Related documentation requests go to the documentation site. Public repository file requests go to the GitHub API. These requests omit browser cookies.
 
 ## Retention and your controls
 
