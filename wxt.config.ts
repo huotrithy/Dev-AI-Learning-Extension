@@ -6,7 +6,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
     name: "Dev AI Learning Extension",
-    short_name: "Dev AI Learning",
+    short_name: "Dev AI Learn",
     description: "Learn from docs, articles, GitHub repos, and YouTube with your own AI model. Get examples and ask follow-up questions.",
     homepage_url: "https://github.com/huotrithy/Dev-AI-Learning-Extension",
     minimum_chrome_version: "116",
